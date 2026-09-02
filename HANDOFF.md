@@ -83,6 +83,7 @@ Not asserted — measured by stepping the Matter engine by hand from the console
 | Where each length pitches | yorker 1.9m, full 4.3m, good 7.5m, short 9.4m in front of the striker |
 | Height at the bat, by length | yorker 10px, full 28px, good 35px, short 47px |
 | Bowled on a miss, by length | yorker 100%, full 29%, good 36%, short 2% |
+| Shot outcomes | 0:16% 1:19% 2:17% 3:5% 4:11% 6:5%, caught 21%, bowled 6% |
 | Time to reach the batter | 533ms measured, against 0.52s in the real world |
 | Where it pitches | 7.5m in front of the striker — a good length |
 | Height at the bat | **39px**, mid-blade. Was 27px, which is why nothing was hittable |
@@ -341,6 +342,33 @@ the match table to 1.0 and all nine calibration tests stay green. Verified: four
 *other* tests fail. If a feature is designed not to move the aggregates, the
 aggregates cannot be its test.
 
+**20. A rule that was never actually written down.** Catches did not check
+whether the ball had bounced -- the entire definition of a catch in cricket.
+There *was* a `hasBounced` flag, so it looked handled; it is set when the
+delivery pitches, before you have played at the ball, so it was always true by
+the time it could have meant anything, and `catchableBy` never read it anyway.
+Result: 66% of every shot in the game was a catch, and because catches ate
+everything that did not clear the rope, the only scoring shots left were
+boundaries. **Two bug reports, one cause** -- "I only ever get sixes" and "I get
+out when the ball rolls to a fielder" were the same defect.
+
+**21. Maintaining physics state by sampling it.** Even with the bounce rule
+added, a third of shots were still catches: `update()` runs once a rendered
+frame at 60Hz while the physics steps at 240, so a struck ball touches down and
+is airborne again *between two frames* and the contact is never seen. Worth ten
+points of catch rate. Bounce and bat contact come from Matter collision events
+now, which fire at the step. **This is trap #4 wearing a different hat** -- the
+same 60Hz sampling that once let the bat teleport through the ball. Anything
+that must not be missed has to be an event, not a poll.
+
+**22. Walking into trap #7 while fixing something else.** Built a "competent
+player" harness -- correct stance and the blade angle from the measured reach
+table -- and it returned 79% dot balls and 0.05 runs a ball, far worse than
+random swinging. The game was fine. Aiming the pointer *at* the contact angle
+makes the bat decelerate into the ball; a real swing aims past it so the blade
+is still travelling at contact. **The broad, less clever sweep was the honest
+measurement.** Third time a harness's own aim has produced a false verdict.
+
 **19. Asserting a gap before measuring it. Three times.** The most repeated
 mistake in the project, and it has never once meant the model was wrong.
 
@@ -443,6 +471,13 @@ state for a small drift. Skip DRS; fun in theory, a UX nightmare.
   the bounce — `restitution` in `bowl()` — and not the bat. Every 0.02 of
   restitution is worth about 1.5px of arrival height, and pitch length and
   flight time do not move with it.
+- **Catches are still ~21% of shots**, against something nearer 5% in real
+  cricket, and that is the 1D field rather than a tuning error: four fielders on
+  one line cover a quarter of a 68m ground where nine spread over 360 degrees
+  cover a fraction of the *area*. `CATCH_REACH` is down to 1.2m to absorb some
+  of it, which is already smaller than a fielder's actual reach. Track 3 is the
+  only real fix; tightening the reach further would just make fielders
+  decorative.
 - **`FIELD` has four fielders on a straight line**, at 18/24/52/58m. There is no
   leg side or off side — the view is purely side-on, so every shot is "down the
   ground", and field placement cannot exist. They have a `distance` scalar and
