@@ -43,21 +43,34 @@ describe("catching", () => {
 
   it("catches a ball reaching a fielder below head height", () => {
     const midOn = FIELD.find((f) => f.name === "mid-on")!;
-    expect(catchableBy(atMetres(midOn.distance), headHeight)?.name).toBe("mid-on");
+    expect(catchableBy(atMetres(midOn.distance), headHeight, true)?.name).toBe("mid-on");
+  });
+
+  it("does not catch a ball that has bounced since the shot", () => {
+    // The definition of a catch, and it was missing: 66% of every shot in the
+    // game was a catch because a ball rolling past a fielder counted.
+    const midOn = FIELD.find((f) => f.name === "mid-on")!;
+    expect(catchableBy(atMetres(midOn.distance), headHeight, false)).toBeNull();
+  });
+
+  it("does not catch a ball skidding along the turf", () => {
+    const midOn = FIELD.find((f) => f.name === "mid-on")!;
+    // A rolling ball sits one radius up. That used to be a catch.
+    expect(catchableBy(atMetres(midOn.distance), GROUND_Y - 6, true)).toBeNull();
   });
 
   it("lets a six sail over the fielder rather than being caught", () => {
     const longOn = FIELD.find((f) => f.name === "long-on")!;
-    expect(catchableBy(atMetres(longOn.distance), GROUND_Y - 300)).toBeNull();
+    expect(catchableBy(atMetres(longOn.distance), GROUND_Y - 300, true)).toBeNull();
   });
 
   it("does not catch a ball that has already landed", () => {
     const midOff = FIELD.find((f) => f.name === "mid-off")!;
-    expect(catchableBy(atMetres(midOff.distance), GROUND_Y)).toBeNull();
+    expect(catchableBy(atMetres(midOff.distance), GROUND_Y, true)).toBeNull();
   });
 
   it("does not catch in the gaps between fielders", () => {
-    expect(catchableBy(atMetres(38), headHeight)).toBeNull();
+    expect(catchableBy(atMetres(38), headHeight, true)).toBeNull();
   });
 });
 

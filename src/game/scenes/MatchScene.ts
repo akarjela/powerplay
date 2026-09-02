@@ -62,8 +62,18 @@ export class MatchScene extends Phaser.Scene {
   private ballSprite!: BallSprite;
 
   private awaitingResult = false;
-  private hasBounced = false;
   private struck = false;
+  /**
+   * Has the ball touched the ground *since being hit*?
+   *
+   * This is what decides a catch, and whether a boundary is six or four. There
+   * used to be a `hasBounced` here instead, set when the *delivery* pitched --
+   * which happens before you play at the ball, so it was already true by the
+   * time it could have meant anything. The six-on-the-full check consulted it
+   * and could therefore never fire: the only sixes in the game were yorkers hit
+   * before they landed.
+   */
+  private bouncedAfterStrike = false;
   private innings = new HumanInnings();
   /** Seeded, so an innings can be replayed. The sim's rule, kept on this side. */
   private rng: Rng = makeRng("powerplay");
@@ -119,6 +129,30 @@ export class MatchScene extends Phaser.Scene {
     this.ballSprite = new BallSprite(this);
 
     this.buildHud();
+
+    /**
+     * Bounce and contact come from collision events, not from sampling.
+     *
+     * `update()` runs once a rendered frame, 60 times a second, while the
+     * physics steps 240 times. A struck ball can touch down and be back in the
+     * air inside a single frame, so a position test simply never sees it -- and
+     * a ball that had bounced still counted as catchable, which kept a third of
+     * every shot in the game a catch even after the bounce rule was added.
+     * Matter raises the collision at the step, so this cannot miss it. It is the
+     * same 60Hz-sampling trap that made the bat pass through the ball.
+     */
+    this.matter.world.on("collisionstart", (event: { pairs: { bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }[] }) => {
+      for (const pair of event.pairs) {
+        const labels = [pair.bodyA.label, pair.bodyB.label];
+        if (!labels.includes("ball")) continue;
+
+        if (labels.includes("ground") && this.struck) this.bouncedAfterStrike = true;
+        if (labels.includes("bat") && !this.struck) {
+          this.struck = true;
+          this.cameras.main.shake(90, 0.004);
+        }
+      }
+    });
 
     this.input.on("pointerdown", () => {
       if (this.innings.complete) return this.restart();
@@ -198,8 +232,8 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private bowl(): void {
-    this.hasBounced = false;
     this.struck = false;
+    this.bouncedAfterStrike = false;
     this.awaitingResult = false;
 
     const over = Math.floor(this.innings.balls / BALLS_PER_OVER);
@@ -267,12 +301,6 @@ export class MatchScene extends Phaser.Scene {
       ball.position.x - CANVAS.width * 0.42, 0, MAX_SCROLL,
     );
 
-    if (!this.struck && ball.velocity.x > 1) {
-      this.struck = true;
-      this.cameras.main.shake(90, 0.004);
-    }
-
-    if (!this.hasBounced && ball.position.y >= GROUND_Y - BALL_RADIUS - 1) this.hasBounced = true;
 
     /**
      * The stumps are a box, not a half-plane.
@@ -292,10 +320,14 @@ export class MatchScene extends Phaser.Scene {
     }
 
     if (this.struck) {
-      const fielder = catchableBy(ball.position.x, ball.position.y);
+      const onTheFull = !this.bouncedAfterStrike;
+      const fielder = catchableBy(ball.position.x, ball.position.y, onTheFull);
       if (fielder && ball.velocity.y > 0) return this.resolve(caught(fielder));
 
-      if (!this.hasBounced && metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE) {
+      // Six is "over the rope without bouncing *after the shot*". This used to
+      // read `!this.hasBounced`, which is about the delivery pitching, so the
+      // only sixes in the game were yorkers hit before they landed.
+      if (onTheFull && metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE) {
         return this.resolve(resolveGroundedBall(ball.position.x, true));
       }
     }
