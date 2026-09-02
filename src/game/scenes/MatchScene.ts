@@ -9,12 +9,23 @@ import { FIELD, bowled, catchableBy, caught, metresDownfield, resolveGroundedBal
 import { BallSprite, drawBatsman, drawFielder, drawStumps, makeBat } from "../visuals/figures";
 import { drawStadium } from "../visuals/stadium";
 import type { Outcome } from "../../sim/types";
+import { HumanInnings } from "../humanInnings";
 
 /** Milestone 1 uses one hardcoded bowler. M3 replaces this with squad data. */
 const BOWLER = { name: "Rana", paceKph: 138 };
 
 /** Balls settle slowly; stop waiting once it is clearly finished. */
 const SETTLED_SPEED = 0.35;
+
+/**
+ * Behind this the ball is the keeper's and the delivery is over.
+ *
+ * Without it a play-and-miss took 2.55s to resolve: the ball carried on past
+ * the batter, bounced off the left wall of the world and trickled back before
+ * `SETTLED_SPEED` was satisfied. That barely mattered while every miss was
+ * bowled, and matters a lot now that most misses are not.
+ */
+const KEEPER_X = BATTER_X - m(2);
 
 export class MatchScene extends Phaser.Scene {
   private bat!: Bat;
@@ -25,12 +36,12 @@ export class MatchScene extends Phaser.Scene {
   private awaitingResult = false;
   private hasBounced = false;
   private struck = false;
-  private score = 0;
-  private wickets = 0;
-  private ballsFaced = 0;
+  private innings = new HumanInnings();
 
   private scoreText!: Phaser.GameObjects.Text;
+  private rateText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
+  private overMarks!: Phaser.GameObjects.Text;
   private callText!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -75,22 +86,46 @@ export class MatchScene extends Phaser.Scene {
     this.buildHud();
 
     this.input.on("pointerdown", () => {
+      if (this.innings.complete) return this.restart();
       if (!this.ball && !this.awaitingResult) this.bowl();
     });
   }
 
+  /**
+   * A broadcast strip along the bottom, rather than a box in the corner.
+   *
+   * The old HUD printed `44/48` and nobody could tell whether that was a
+   * scoring bug or a display one -- it was neither, it was an innings with no
+   * end. A strip laid out the way television lays it out makes the state
+   * legible at a glance: score, overs, run rate, and the over so far. When the
+   * numbers are wrong you can see that they are wrong.
+   */
   private buildHud(): void {
-    this.add.rectangle(16, 14, 250, 76, 0x0a1428, 0.75)
-      .setOrigin(0, 0).setScrollFactor(0).setDepth(20)
-      .setStrokeStyle(1, 0xffffff, 0.14);
+    const height = 62;
+    const top = CANVAS.height - height;
 
-    this.scoreText = this.add.text(30, 24, "", {
+    this.add.rectangle(0, top, CANVAS.width, height, 0x08111f, 0.88)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(20);
+    // A colour bar reads as a broadcast graphic and is where the batting
+    // franchise's colours go in M4.
+    this.add.rectangle(0, top, 6, height, 0x38bdf8)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(21);
+
+    this.scoreText = this.add.text(26, top + 12, "", {
       fontFamily: "system-ui, sans-serif", fontSize: "30px", color: "#ffffff", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(21);
 
-    this.statusText = this.add.text(30, 62, "", {
-      fontFamily: "system-ui, sans-serif", fontSize: "13px", color: "#8fb8a0",
+    this.rateText = this.add.text(26, top + 44, "", {
+      fontFamily: "system-ui, sans-serif", fontSize: "12px", color: "#7dd3fc",
     }).setScrollFactor(0).setDepth(21);
+
+    this.overMarks = this.add.text(CANVAS.width - 26, top + 14, "", {
+      fontFamily: "ui-monospace, Menlo, monospace", fontSize: "20px", color: "#e2e8f0",
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(21);
+
+    this.statusText = this.add.text(CANVAS.width - 26, top + 44, "", {
+      fontFamily: "system-ui, sans-serif", fontSize: "12px", color: "#94a3b8",
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(21);
 
     // Big centred call for the result of a ball -- "SIX!", "Caught at mid-on".
     this.callText = this.add.text(CANVAS.width / 2, 150, "", {
@@ -101,13 +136,35 @@ export class MatchScene extends Phaser.Scene {
     this.updateHud("Click to face up. Move the mouse to swing.");
   }
 
+  /** A finished innings is a dead end without this. */
+  private restart(): void {
+    this.innings = new HumanInnings();
+    this.updateHud("Click to face up. Move the mouse to swing.");
+    this.callText.setAlpha(0);
+  }
+
   private bowl(): void {
     this.hasBounced = false;
     this.struck = false;
     this.awaitingResult = false;
 
+    /**
+     * Restitution is the lever that decides whether this game is playable.
+     *
+     * Measured by stepping the engine by hand: at 0.55 the ball arrived 27px
+     * above the ground at the stumps, and `bowled()` fires below 30px -- so
+     * every single ball that beat the bat hit the stumps. A playtest came back
+     * 48 wickets down off 61 balls, which reads as "the swing is broken" and is
+     * actually one constant being 3px wrong.
+     *
+     * At 0.70 the ball arrives 39px up, which is mid-blade and, in the figure
+     * scale the bat and stumps are already drawn in, about thigh height for a
+     * good length. Pitch distance (7.5m) and flight time (533ms) are unchanged
+     * -- restitution moves the bounce and nothing else, which is what makes it
+     * the right knob rather than slowing the delivery down.
+     */
     const ball = this.matter.add.circle(BOWLER_X, GROUND_Y - 90, BALL_RADIUS, {
-      restitution: 0.55,
+      restitution: 0.70,
       friction: 0.04,
       frictionAir: 0.006,
       density: 0.008,
@@ -143,8 +200,21 @@ export class MatchScene extends Phaser.Scene {
 
     if (!this.hasBounced && ball.position.y >= GROUND_Y - BALL_RADIUS - 1) this.hasBounced = true;
 
-    if (!this.struck && ball.position.x <= BATTER_X + STUMP_WIDTH && ball.position.y > GROUND_Y - STUMP_HEIGHT) {
+    /**
+     * The stumps are a box, not a half-plane.
+     *
+     * This used to test `x <= BATTER_X + STUMP_WIDTH` with no lower bound, so
+     * it stayed true for every x behind the stumps too: a ball that passed
+     * safely over them and then dropped as it carried on to the keeper was
+     * scored as bowled, several frames after it had already gone by.
+     */
+    const overTheStumps = Math.abs(ball.position.x - BATTER_X) <= STUMP_WIDTH;
+    if (!this.struck && overTheStumps && ball.position.y > GROUND_Y - STUMP_HEIGHT) {
       return this.resolve(bowled());
+    }
+
+    if (!this.struck && ball.position.x < KEEPER_X) {
+      return this.resolve({ runs: 0, description: "Beaten — through to the keeper." });
     }
 
     if (this.struck) {
@@ -170,12 +240,10 @@ export class MatchScene extends Phaser.Scene {
     if (this.awaitingResult) return;
     this.awaitingResult = true;
 
-    this.score += outcome.runs;
-    this.ballsFaced += 1;
-    if (outcome.wicket) this.wickets += 1;
+    this.innings.record(outcome);
 
     this.announce(outcome);
-    this.updateHud("Click for the next ball");
+    this.updateHud(this.innings.complete ? "Click to start a new innings" : "Click for the next ball");
 
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
@@ -189,15 +257,23 @@ export class MatchScene extends Phaser.Scene {
 
   private announce(outcome: Outcome): void {
     const colour = outcome.wicket ? "#f87171" : outcome.runs >= 4 ? "#fbbf24" : "#e2e8f0";
-    this.callText.setText(outcome.description).setColor(colour).setAlpha(1).setScale(0.85);
+    const text = this.innings.complete
+      ? `${this.innings.closedBecause} — ${this.innings.score} (${this.innings.oversText})`
+      : outcome.description;
+    this.callText.setText(text).setColor(colour).setAlpha(1).setScale(0.85);
 
     this.tweens.add({ targets: this.callText, scale: 1, duration: 180, ease: "Back.easeOut" });
-    this.tweens.add({ targets: this.callText, alpha: 0, delay: 1100, duration: 400 });
+    // The closing card stays up; every other call fades.
+    if (!this.innings.complete) {
+      this.tweens.add({ targets: this.callText, alpha: 0, delay: 1100, duration: 400 });
+    }
   }
 
   private updateHud(status: string): void {
-    const overs = `${Math.floor(this.ballsFaced / 6)}.${this.ballsFaced % 6}`;
-    this.scoreText.setText(`${this.score}/${this.wickets}`);
-    this.statusText.setText(`${overs} overs   ·   ${status}`);
+    const innings = this.innings;
+    this.scoreText.setText(`${innings.score}   (${innings.oversText})`);
+    this.rateText.setText(`CRR ${innings.runRate.toFixed(2)}`);
+    this.overMarks.setText(innings.thisOver.map((ball) => ball.label).join(" "));
+    this.statusText.setText(status);
   }
 }
