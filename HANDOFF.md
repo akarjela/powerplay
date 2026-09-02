@@ -1,8 +1,10 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-02. M1 and M2 complete, plus a playability pass that
-fixed three real bugs a human playtest exposed. The innings now ends, and the
-ball is hittable. Nothing is mid-edit; the tree is clean and every test passes._
+_Last updated: 2026-09-02. M1 and M2 complete, a playability pass that fixed
+three bugs a human playtest exposed, and track 2 (shot selection) through phase
+3 of 4. The game now has a read-choose-execute loop: four lengths that pitch
+where they should, and a foot to commit to. Nothing is mid-edit; the tree is
+clean and every test passes._
 
 ## Goal
 
@@ -48,20 +50,24 @@ prevent that.
 
 ## Current state
 
-**M1 and M2 are done.** The game is playable and timing genuinely matters:
-swing early and the bat has already stopped, so you dribble it 8m; time it and
-it carries 68m for six. Separately, `src/sim/` resolves a full T20 match —
-toss, two innings, scorecard, result — headlessly and reproducibly.
+**M1, M2 and most of track 2 are done.** The game is playable, timing matters,
+and there is now something to read: the scene bowls from the simulation's
+`bowl()`, so four lengths pitch in visibly different places, and the player
+commits to a front or back foot before the ball arrives. Separately, `src/sim/`
+resolves a full T20 match — toss, two innings, scorecard, result — headlessly
+and reproducibly.
 
-The two halves have not met yet. That is M3.
+The two halves have met at the *delivery*: the scene renders a `Delivery` the
+model produced. They have not met at the *outcome* — a human's shot does not yet
+flow back through `resolveShot`. That is phase 4 and M3.
 
 | | |
 | --- | --- |
-| Repo | Local git, 5 commits, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 59 passing (`npm test`), ~650ms, no browser |
+| Repo | Local git, 9 commits, `main`. **Not pushed to GitHub** — no remote set |
+| Tests | 69 passing (`npm test`), ~800ms, no browser |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173 |
-| Source | ~2,000 lines across 16 files |
+| Source | ~2,400 lines across 18 files |
 | Node | 20.20.2 locally |
 
 Stack versions, all current as of writing: Phaser 4.2.1, Vite 8.2.2,
@@ -74,6 +80,9 @@ Not asserted — measured by stepping the Matter engine by hand from the console
 | | |
 | --- | --- |
 | Delivery pace | 126 kph actual against 138 intended; the gap is air resistance, which is real |
+| Where each length pitches | yorker 1.9m, full 4.3m, good 7.5m, short 9.4m in front of the striker |
+| Height at the bat, by length | yorker 10px, full 28px, good 35px, short 47px |
+| Bowled on a miss, by length | yorker 100%, full 29%, good 36%, short 2% |
 | Time to reach the batter | 533ms measured, against 0.52s in the real world |
 | Where it pitches | 7.5m in front of the striker — a good length |
 | Height at the bat | **39px**, mid-blade. Was 27px, which is why nothing was hittable |
@@ -84,6 +93,22 @@ Not asserted — measured by stepping the Matter engine by hand from the console
 | Well-timed swing | 68m — six |
 | Latest-timed swing | 96m (probably a touch generous; see rough edges) |
 
+### Measured footwork
+
+Blade angle from vertical needed to reach each length, by stance. `MISS` means
+the ball is outside the blade's arc entirely — not penalised, unreachable.
+
+| stance | yorker | full | good | short |
+| --- | --- | --- | --- | --- |
+| front | 32° | 60° | 69° | 82° |
+| neutral | 0° | 49° | 59° | 73° |
+| back | **MISS** | 40° | 51° | 66° |
+
+The two ends are the mechanic. A yorker is unreachable off the back foot, and
+from neutral only with the bat hanging dead vertical, which is a block rather
+than a shot. The short ball inverts it: 82° off the front foot is nearly
+horizontal and awkward against a comfortable 66° off the back.
+
 ### Measured simulation
 
 Aggregates over three generated 45-match seasons, which is what
@@ -91,14 +116,16 @@ Aggregates over three generated 45-match seasons, which is what
 
 | | |
 | --- | --- |
-| First-innings total | 157–169 (≈165) |
-| Wickets an innings | 5.6–6.3 (≈6) |
-| Strike rate | 133–141 (≈135) |
-| Economy | ≈8.2 (≈8.3) |
-| Dot balls | 39–41% (≈36%) |
-| Fours / sixes an innings | 12–13 / 7.5–8.2 (≈13 / 9) |
-| Chases successful | 44–67% of matches |
+| First-innings total | 163–170 (≈165) |
+| Wickets an innings | 5.8–6.4 (≈6) |
+| Strike rate | 136–144 (≈135) |
+| Economy | 8.1–8.5 (≈8.3) |
+| Fours / sixes a ball | 0.106–0.121 / 0.064–0.074 |
+| Chases successful | ≈44% of matches |
 | Elite vs poor attack | 25 runs and ~1 wicket an innings |
+| Technique 92 vs 12 | 3.25 wickets an innings apart |
+| Wrong foot played on | 13.0% of legal balls, costing 17.0% of wickets |
+| Length mix | yorker 21%, full 22%, good 34%, short 24% |
 
 ## Files that matter
 
@@ -136,8 +163,13 @@ order, and this is also the order to read them in.
 - `src/sim/delivery.ts` — bowler attributes to a `Delivery`. Also owns `Phase`
   (powerplay / middle / death). Produces two derived scalars the outcome model
   reads: `threat` (danger) and `latitude` (room to score)
-- `src/sim/outcome.ts` — **the model**. Three steps per ball, in this order:
-  intent, then wicket, then runs. All the tuning constants live at the top
+- `src/sim/shot.ts` — the shot vocabulary and the footwork/length match table.
+  Deliberately separate from `outcome.ts`, which also holds the model of how an
+  *AI* batter decides; a human decides by pressing a key, so M3's `bridge.ts`
+  imports this and nothing else
+- `src/sim/outcome.ts` — **the model**. Footwork and commitment are chosen
+  first, then a wicket is rolled, then runs. All the tuning constants live at
+  the top, and `EXPECTED_MATCH` is the one everything else is centred on
 - `src/sim/innings.ts` — bookkeeping only: strike rotation, the over, who may
   bowl next, when the innings ends. It makes no judgement about what happened
 - `src/sim/match.ts` — toss, two innings, result, and the net-run-rate helper
@@ -159,6 +191,9 @@ order, and this is also the order to read them in.
   adds up three separate ways), the bowling allocation, attribute sensitivity,
   and ball-for-ball replay from a seed
 - `tests/humanInnings.test.ts` — 9 tests over the innings that ends
+- `tests/shot.test.ts` — 8 tests over the footwork axis, including the guard on
+  `EXPECTED_MATCH`. These catch the axis not *mattering*; the two new bands in
+  `calibration.test.ts` catch it not *firing*
 - `tests/calibration.test.ts` — 9 tests. **The one that matters**; see below
 - `tests/squads.ts` — generated squads for the tests. Not a fixture file you
   should grow into real data; real squads land in `src/` in M3
@@ -269,86 +304,133 @@ trickled back before `SETTLED_SPEED` was met. It had always taken 2.55s;
 nothing had ever reached it. **When you fix a bug that was masking a code
 path, budget for what is behind it.**
 
-**14. Asserting a gap before measuring it.** The test that caught #10 asserted
-the elite attack would concede 20 fewer runs; the real gap was 12.6, so it
-failed, and the first instinct was to read the failure as a sign the model had
-the *direction* wrong. It did not — the number was just smaller than the guess.
-Measure the effect, then write the threshold under it.
+**14. Building a mechanic without checking what feeds it.** Footwork was
+implemented, tested and calibrated before anyone measured the *length mix* it
+reads. Bowlers had one intended length per phase and hit it about 80% of the
+time, so the league was 53% good and 30% yorkers with 8% short — which made the
+front foot correct on **92% of deliveries**. The whole decision was a formality
+and "always play forward" was a dominant strategy. Every test passed. **Measure
+a mechanic's inputs, not just its outputs**; the outputs looked healthy because
+the axis was quietly inert.
+
+**15. A delivery shape that only worked at one speed.** The four lengths were
+calibrated at 138kph and looked perfect. At 148kph the yorker and the full ball
+both arrived at 21px, and at 115kph the ordering scrambled outright, because a
+slower ball carries less far before it pitches. Anything fitted at one point in
+a parameter space needs checking across the range that space actually spans —
+`bowl()` produces 113–150kph.
+
+**16. Expecting a harder-hit ball to bounce higher.** To make a short ball
+arrive high at constant restitution, the obvious move is to dig it in harder.
+Measured, that makes it arrive *lower* — 23px, then 20px, then 16px — because
+pitching it further away means it has bounced and is already descending by the
+time it reaches the bat. The bounce had to vary with the length instead.
+
+**17. Two constants, neither wrong, that were wrong together.** `technique`
+already multiplied the wicket chance directly, and the new footwork read is
+*also* driven by technique. Each was defensible alone; together they put 4.50
+wickets an innings between a technique-92 side and a technique-12 one — a
+tail-ender losing eight on his own. **A one-sided assertion cannot catch this**,
+because double-counting makes the "technique matters" test pass *more*
+comfortably. That test now has an upper bound as well as a lower one.
+
+**18. Trusting a calibration band to notice a dead feature.** Every footwork
+multiplier is centred on the expected match, so the axis moves the spread and
+not the mean — which is exactly what makes the season bands blind to it. Flatten
+the match table to 1.0 and all nine calibration tests stay green. Verified: four
+*other* tests fail. If a feature is designed not to move the aggregates, the
+aggregates cannot be its test.
+
+**19. Asserting a gap before measuring it. Three times.** The most repeated
+mistake in the project, and it has never once meant the model was wrong.
+
+- The test that caught #10 demanded the elite attack concede 20 fewer runs; the
+  real gap was 12.6. The first instinct was to read the failure as the model
+  having the *direction* wrong. It did not.
+- The technique A/B demanded 20 and measured 12.6 the same way.
+- The back-foot-to-a-yorker test demanded 15 points of separation in the
+  bowled-or-lbw share; the real gap was 12.
+
+Every time, the fix was the threshold and not the code. **Measure the effect
+first, then write the threshold under the measured value**, and put the measured
+number in a comment next to it so the next person does not re-guess it.
 
 ## Next steps
 
 A design review reframed what comes after M2. The headline: **the input is
-one-dimensional.** Cricket's skill loop is read the ball, choose a shot,
-execute the timing — and the game currently has only the third part. That
-reordered the plan into three tracks.
+one-dimensional.** Cricket's skill loop is read the ball, choose a shot, execute
+the timing — and the game had only the third part. That reordered the plan into
+three tracks, of which the first is finished and the second is three quarters
+done.
 
-**Track 1 — playability. Done.** The innings ends, the ball is hittable, the
-HUD is legible. What is left of it needs a human: play ten overs and judge the
-swing feel, using two knobs in `config.ts`:
+**Track 1 — playability. Done.** The innings ends, the ball is hittable, the HUD
+is legible. What is left needs a human: play ten overs and judge the swing feel
+with `MAX_SWING_SPEED` (0.42) and `SWING_RESPONSE` (0.30) in `config.ts`. Lower
+response means more lag, which means more skill. There is no test for this and
+there cannot be — give it a fixed budget and accept "good enough".
 
-- `MAX_SWING_SPEED` (0.42) — how fast the bat can move
-- `SWING_RESPONSE` (0.30) — how hard it chases the pointer. Lower means more lag,
-  which means more skill
+**Track 2 — shot selection. Phases 1–3 done, phase 4 outstanding.**
 
-There is no test for this and there cannot be. Give it a fixed budget and
-accept "good enough": a great tournament around a decent bat beats a perfect
-bat with nothing behind it.
+Done: footwork and commitment in the model, four lengths that pitch where they
+should, and a keyboard-committed stance that moves the bat's pivot. See the two
+measured tables above — the ladder and the reach — because those are what the
+whole track was for.
 
-**Track 2 — shot selection, and it has to come before M3's bridge.** Two
-binary choices, front/back foot and ground/aerial, give four archetypes;
-picking one that does not match the delivery's length is punished — a drive to
-a short ball tops the edge, a pull to a yorker is bowled. That one interaction
-buys more realism than any amount of physics polish.
+**Phase 4 is the one that still matters, and it is the seam.** A human's shot
+does not yet flow back through the model. The scene renders a `Delivery` the
+simulation produced, but when you hit the ball, `field.ts` decides the outcome
+from distance and height alone — it does not know which foot you were on, and
+`Outcome.shot` is left undefined on the physics path. So:
 
-The critical constraint: **this cannot be a physics-side feature.** If the
-human path gains a model of what a shot is and the sim does not, the two grow
-separate scoring logic, which is the precise failure the seam exists to
-prevent. Build it through `src/sim/`:
+1. `src/sim/bridge.ts` — take the physics result *and* the player's stance, and
+   produce an `Outcome` carrying its `Shot`. It should import `shot.ts` and not
+   `outcome.ts`; the AI's situational decision model is no use to a scene where
+   a human presses a key.
+2. Compare the two paths. Play the physics path headlessly against the same
+   attack and check its outcome distribution lands near `playBall`'s for an
+   average batter. If a human innings and a simulated one disagree about what a
+   ball is worth, the tournament is unfair in one direction and nobody can tell
+   which.
 
-- `outcome.ts` already decides `Intent` (defend / rotate / attack) *before*
-  rolling the outcome. The four archetypes replace `Intent`, so the AI batter
-  makes the same kind of decision a human does.
-- `delivery.ts` already carries `Length` as yorker / full / good / short — the
-  same four the review named. The shot-versus-length punish table is shared by
-  both paths.
+**Aim that harness carefully.** A previous automated playtest reported "no
+contact at any timing" and it was the *test's* aim that was wrong — swinging at
+a pointer horizontally right of the pivot puts the blade at pivot height, well
+above a ball that has pitched. When a playtest says the game is unplayable,
+check the test before changing the game.
 
-Do this before `bridge.ts`, or the bridge gets written twice.
+**Track 3 — the field is a lie.** Four fielders on one horizontal line, so there
+is no leg side, no off side, and field placement cannot exist. They carry a
+single `distance` scalar, so **either fix starts by inventing the depth
+coordinate** — that is the real cost, not the renderer. Cheaper: keep the
+side-on view for the batting moment, then cut to a top-down radar the instant
+the ball is struck, which is what broadcast does with a wagon wheel. Harder but
+better: 2.5D with four or five depth lanes.
 
-**Track 3 — the field is a lie, and fixing it unlocks three things.** All four
-fielders sit on one horizontal line, so there is no leg side, no off side, and
-field placement — one of the sport's core strategic layers — cannot exist.
-Fielders currently have a single `distance` scalar, so **either fix requires
-inventing the depth coordinate**; that is the real cost, not the renderer.
+It unlocks three things that cannot exist without it: field settings, powerplay
+fielding restrictions, and direction mapping (playing early sends it to leg,
+late to off) — which is meaningless until there *is* a leg side. It would also
+give wides somewhere to go; see the rough edges.
 
-Cheaper: keep the side-on view for the batting moment, then cut to a top-down
-radar the instant the ball leaves the bat — which is what broadcast does with a
-wagon wheel, so it reads as more authentic, not less. Harder but better: go
-2.5D, scale sprites by distance, put fielders in four or five depth lanes.
-
-Do the cheap one first. It also unlocks direction mapping (playing early sends
-it to leg, late to off), which is meaningless until there *is* a leg side.
-
-**Then M4** — ten franchises, single round robin (9 matches each), IPL playoff
-bracket (Qualifier 1, Eliminator, Qualifier 2, Final), points table with net
-run rate as the tiebreak. `netRunRateInnings()` in `match.ts` already exists
-and already handles the rule people get wrong: a side bowled out is charged the
-full twenty overs. Powerplay fielding restrictions become mechanical once
-track 3 lands, and ties need a point each — there is no super over.
+**Then M4** — ten franchises, single round robin, IPL playoff bracket
+(Qualifier 1, Eliminator, Qualifier 2, Final), points table with net run rate as
+the tiebreak. `netRunRateInnings()` already handles the rule people get wrong: a
+side bowled out is charged the full twenty overs. Ties need a point each; there
+is no super over. The HUD's colour bar is already where a franchise's colours go.
 
 **Then M5** — `localStorage`, orange/purple cap tables, sound, mobile touch,
-deploy. The feel layer belongs here too and is where *Little Master Cricket*
-actually wins: frame hold and a small shake on middled contact, ball trail,
-slow-motion on anything clearing the rope, a crowd swell that tracks the ball,
-a crude replay on sixes and wickets, and distinct audio for edge / middle /
-miss so players learn by ear.
+deploy. The feel layer belongs here and is where *Little Master Cricket* wins:
+frame hold and a small shake on middled contact, ball trail, slow-motion on
+anything clearing the rope, a crowd swell that tracks the ball, a crude replay
+on sixes and wickets, and distinct audio for edge / middle / miss so players
+learn by ear.
 
-Ranked by payoff for the systems that sell "realistic": lateral movement off
-the pitch (fake it — a small drift after the bounce, scaled by the bowler's
+Ranked by payoff for the systems that sell "realistic": lateral movement off the
+pitch (fake it — a small drift after the bounce scaled by the bowler's
 `movement`), bowler archetypes as presets over the attributes that already
-exist, and pressure — dot balls narrow the timing window, which is why cricket
-feels tense and is about twenty lines. **Ball age is weaker here than it looks:**
-twenty overs is one ball, barely past the hard phase, so it is a lot of state
-for a small drift. Skip DRS entirely; it is fun in theory and a UX nightmare.
+exist, and pressure — dot balls narrowing the timing window, which is why
+cricket feels tense and is about twenty lines. **Ball age is weaker than it
+looks**: twenty overs is one ball, barely past the hard phase, so it is a lot of
+state for a small drift. Skip DRS; fun in theory, a UX nightmare.
 
 ## Known rough edges
 
@@ -367,12 +449,16 @@ for a small drift. Skip DRS entirely; it is fun in theory and a UX nightmare.
   no second coordinate, so any fix starts by inventing one. This is track 3.
 - **Running between the wickets is not simulated.** Distance stands in for it,
   deliberately conservatively.
-- **`bowled` is currently almost unreachable in the physics game.** Raising the
-  bounce to make the ball hittable lifted it clear of the stumps, and with one
-  fixed delivery there is no middle ground: measured, restitution 0.64 is
-  bowled-on-every-miss and 0.66 is bowled-on-none. "Sometimes bowled" cannot be
-  tuned into a single delivery — it needs length variation, which is track 2.
-  Until then a play-and-miss costs a dot ball and nothing else.
+- **The human innings concedes no extras.** `bowl()` produces wides and no-balls
+  and the scene rolls them away, because a side-on view has no leg side to bowl
+  down and a bouncer over the head does not work either — measured, even at
+  restitution 0.99 the ball tops out at 69px against a blade reaching 114px, so
+  it would always be playable and never called. Track 3 gives them somewhere to
+  go. Until then the two paths disagree about extras, and a season's bowling
+  figures will show it.
+- **A human's shot does not reach the model yet.** `Outcome.shot` is filled by
+  the simulation and left undefined by the physics path, so the scorecard can
+  explain an AI dismissal and not yours. That is phase 4.
 - **The physics path still only produces `bowled` and `caught`.** The sim
   produces all five. That asymmetry is fine — a human innings genuinely cannot
   be run out when running is not simulated — but it means the two paths will
@@ -404,7 +490,7 @@ for a small drift. Skip DRS entirely; it is fun in theory and a UX nightmare.
 ```bash
 npm install
 npm run dev              # http://localhost:5173
-npm test                 # 59 tests, no browser
+npm test                 # 69 tests, no browser
 npm run build
 ```
 
