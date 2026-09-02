@@ -1,7 +1,9 @@
 import type { Rng } from "./rng";
 import type { Batter } from "./player";
 import { unit } from "./player";
-import type { Delivery, Length, Phase } from "./delivery";
+import type { Delivery, Phase } from "./delivery";
+import { IDEAL_FOOT, matchQuality } from "./shot";
+import type { Commitment, Footwork, Shot } from "./shot";
 import type { Outcome, Runs } from "./types";
 
 /**
@@ -30,22 +32,6 @@ import type { Outcome, Runs } from "./types";
  *      latitude and the footwork match reshape it. Only reached if the batter
  *      survived.
  */
-
-export type Commitment = "defend" | "rotate" | "attack";
-
-export type Footwork = "front" | "back";
-
-/**
- * One shot: which foot, and how hard.
- *
- * A struct rather than six flat archetype names, because the two axes are
- * driven by different attributes and every table below would otherwise have to
- * re-encode the cross product of them.
- */
-export interface Shot {
-  footwork: Footwork;
-  commitment: Commitment;
-}
 
 export interface BallContext {
   phase: Phase;
@@ -79,32 +65,6 @@ const RUN_VALUES: Runs[] = [0, 1, 2, 3, 4, 6];
 const COMMITMENT_RISK: Record<Commitment, number> = { defend: 0.55, rotate: 1.0, attack: 1.95 };
 
 /**
- * How well the footwork matched the length, 0..1.
- *
- * The two catastrophes are the corners. Back foot to a yorker is 0.12: you are
- * playing from the crease at a ball aimed at its base and there is nothing you
- * can do. Front foot to a short ball is 0.22: committed forward, the ball climbs
- * past the edge. A good length is deliberately forgiving on both feet, because
- * in cricket it genuinely is -- which makes a misread there cheap and a misread
- * at either extreme expensive.
- */
-const MATCH: Record<Footwork, Record<Length, number>> = {
-  front: { yorker: 0.85, full: 1.00, good: 0.72, short: 0.22 },
-  back: { yorker: 0.12, full: 0.42, good: 0.82, short: 1.00 },
-};
-
-export const matchQuality = (footwork: Footwork, length: Length): number =>
-  MATCH[footwork][length];
-
-/** The foot the ball asks for. Anything else is a misread. */
-const IDEAL_FOOT: Record<Length, Footwork> = {
-  yorker: "front",
-  full: "front",
-  good: "front",
-  short: "back",
-};
-
-/**
  * Reading the length is where `technique` lives.
  *
  * A tail-ender picks the right foot 70% of the time and a top-order player 96%,
@@ -134,7 +94,16 @@ export function chooseFootwork(batter: Batter, delivery: Delivery, rng: Rng): Fo
  * If you change `LENGTH_MIX` in delivery.ts, re-measure the expected match and
  * re-centre these. They are not independent of it.
  */
-const EXPECTED_MATCH = 0.802;
+/**
+ * The measured mean match for an average batter against the league's length
+ * mix. Every multiplier below is centred on it, so the axis changes the spread
+ * between good and bad batters without moving the league's averages.
+ *
+ * It is a function of LENGTH_MIX in delivery.ts and of the read rates above.
+ * Change either and this goes stale silently -- a calibration drift with no
+ * failing test -- so `shot.test.ts` re-measures it and asserts it still holds.
+ */
+export const EXPECTED_MATCH = 0.802;
 const MATCH_WICKET = { intercept: 1.0 + 1.15 * EXPECTED_MATCH, slope: 1.15 };
 const MATCH_BOUNDARY = { intercept: 1.0 - 0.70 * EXPECTED_MATCH, slope: 0.70 };
 const MATCH_DOT = { intercept: 1.0 + 0.45 * EXPECTED_MATCH, slope: 0.45 };
@@ -195,17 +164,17 @@ export function resolveShot(
   const match = matchQuality(shot.footwork, delivery.length);
 
   if (rng.chance(wicketChance(batter, delivery, shot, match, context))) {
-    return dismissal(batter, delivery, shot, rng);
+    return { ...dismissal(batter, delivery, shot, rng), shot };
   }
 
   // A leg-side ball pushed at defensively runs away off the pad often enough to
   // be worth having, and it is the only thing that exercises the byes branch of
   // `runsAgainstBowler`.
   if (shot.commitment === "defend" && delivery.line === "leg" && rng.chance(0.03)) {
-    return { runs: 1, extra: "leg-bye", description: "Leg bye, off the pad." };
+    return { runs: 1, extra: "leg-bye", shot, description: "Leg bye, off the pad." };
   }
 
-  return runsScored(batter, delivery, shot, match, rng);
+  return { ...runsScored(batter, delivery, shot, match, rng), shot };
 }
 
 /**

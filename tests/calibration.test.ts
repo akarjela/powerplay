@@ -3,6 +3,7 @@ import { makeRng } from "../src/sim/rng";
 import { simulateMatch } from "../src/sim/match";
 import { OVERS, BALLS_PER_OVER } from "../src/sim/innings";
 import { makeLeague } from "./squads";
+import { playedTheRightFoot } from "../src/sim/shot";
 
 /**
  * The test that matters most in M2.
@@ -65,6 +66,12 @@ describe("season calibration", () => {
     // the lowest total in IPL history is 49, so a collapse in the 40s is
     // cricket, not a broken model. Anything under 30 is not.
     expect(Math.min(...totals)).toBeGreaterThan(30);
+
+    // A single minimum is one order statistic over 135 innings, and the
+    // footwork axis fattens the left tail -- so on its own that assertion is
+    // close to a coin flip and would fail on an unlucky draw while the model
+    // was healthy. This is the claim about the model rather than the draw.
+    expect(totals.filter((t) => t < 50).length / totals.length).toBeLessThan(0.03);
     expect(Math.max(...totals)).toBeLessThan(280);
   });
 
@@ -118,6 +125,38 @@ describe("season calibration", () => {
     const share = chased / (SEEDS.length * 45);
     expect(share).toBeGreaterThan(0.3);
     expect(share).toBeLessThan(0.75);
+  });
+
+  /**
+   * Bands for the footwork axis itself.
+   *
+   * Every other assertion here is blind to it. The match multipliers are
+   * centred on the expected match, so an axis that has quietly stopped mattering
+   * -- table flattened, slope zeroed, `match` computed and then not threaded
+   * through -- produces almost exactly these same league averages. Nine green
+   * tests, feature gone. These two are the ones that would notice.
+   */
+  it("plays the wrong foot often enough to matter, and not so often it is noise", () => {
+    const balls = innings.flatMap((i) => i.log).filter((b) => b.outcome.shot);
+    const wrong = balls.filter(
+      (b) => !playedTheRightFoot(b.outcome.shot!.footwork, b.delivery.length),
+    );
+    // Measured at 13.0%.
+    const share = wrong.length / balls.length;
+    expect(share).toBeGreaterThan(0.08);
+    expect(share).toBeLessThan(0.20);
+  });
+
+  it("loses a real share of its wickets to the wrong foot, but not most of them", () => {
+    const balls = innings.flatMap((i) => i.log).filter((b) => b.outcome.shot);
+    const wickets = balls.filter((b) => b.outcome.wicket);
+    const misread = wickets.filter(
+      (b) => !playedTheRightFoot(b.outcome.shot!.footwork, b.delivery.length),
+    );
+    // Measured at 17.0%: a wicket column the axis contributes to without owning.
+    const share = misread.length / wickets.length;
+    expect(share).toBeGreaterThan(0.10);
+    expect(share).toBeLessThan(0.35);
   });
 
   it("finishes almost every innings inside twenty overs", () => {

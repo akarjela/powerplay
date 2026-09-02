@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { makeRng } from "../src/sim/rng";
 import { averageBatter, averageBowler } from "../src/sim/player";
 import type { Delivery, Length } from "../src/sim/delivery";
-import {
-  chooseFootwork, matchQuality, resolveShot,
-} from "../src/sim/outcome";
-import type { BallContext, Footwork, Shot } from "../src/sim/outcome";
+import { bowl, phaseOf } from "../src/sim/delivery";
+import { makeLeague } from "./squads";
+import { chooseFootwork, resolveShot, EXPECTED_MATCH } from "../src/sim/outcome";
+import type { BallContext } from "../src/sim/outcome";
+import { matchQuality } from "../src/sim/shot";
+import type { Footwork, Shot } from "../src/sim/shot";
 
 /**
  * The footwork axis, tested directly rather than through a season.
@@ -118,5 +120,34 @@ describe("reading the length", () => {
     // A batter who reads perfectly should still pick opposite feet for these.
     expect(readRate(100, "yorker", "front")).toBeGreaterThan(0.9);
     expect(readRate(100, "short", "back")).toBeGreaterThan(0.9);
+  });
+});
+
+describe("the calibration constant the whole model is centred on", () => {
+  /**
+   * `EXPECTED_MATCH` is what every match multiplier in outcome.ts is centred on,
+   * and it is a function of two things that live somewhere else: `LENGTH_MIX` in
+   * delivery.ts, and the read rates. Change either and this constant goes stale,
+   * the multipliers stop being neutral at the mean, and the league's averages
+   * drift with no test failing -- exactly the kind of silent calibration rot
+   * that the season bands cannot see. So re-measure it against the real
+   * delivery model rather than trusting the number.
+   */
+  it("still matches what the delivery model actually produces", () => {
+    const rng = makeRng("expected");
+    const teams = makeLeague(makeRng("expected-squads"));
+    const batter = averageBatter("x");
+
+    let sum = 0;
+    let balls = 0;
+    // Walk the overs so the phases are weighted the way an innings weights them.
+    for (let i = 0, over = 0; i < 60_000; i++, over = (over + 1) % 20) {
+      const delivery = bowl(teams[i % 10].bowlers[i % 6], phaseOf(over), rng);
+      if (delivery.illegal) continue;
+      sum += matchQuality(chooseFootwork(batter, delivery, rng), delivery.length);
+      balls++;
+    }
+
+    expect(Math.abs(sum / balls - EXPECTED_MATCH)).toBeLessThan(0.02);
   });
 });

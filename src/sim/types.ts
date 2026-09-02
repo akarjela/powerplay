@@ -8,6 +8,8 @@
  * meaning anything. This type existing is what prevents that.
  */
 
+import type { Shot } from "./shot";
+
 export type Runs = 0 | 1 | 2 | 3 | 4 | 6;
 
 export type Dismissal =
@@ -23,6 +25,13 @@ export interface Outcome {
   runs: Runs;
   wicket?: Dismissal;
   extra?: Extra;
+  /**
+   * The shot played, when one was. Absent on a wide or a no-ball, which the
+   * batter is never consulted about. The simulation fills this in; the physics
+   * game fills it from the player's stance in M3, which is what lets one
+   * scorecard explain *why* a wicket fell whichever path produced it.
+   */
+  shot?: Shot;
   /** Human-readable, for commentary and for debugging a suspicious scorecard. */
   description: string;
 }
