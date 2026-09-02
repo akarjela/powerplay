@@ -63,11 +63,11 @@ flow back through `resolveShot`. That is phase 4 and M3.
 
 | | |
 | --- | --- |
-| Repo | Local git, 9 commits, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 69 passing (`npm test`), ~800ms, no browser |
+| Repo | Local git, 16 commits, `main`. **Not pushed to GitHub** — no remote set |
+| Tests | 71 passing (`npm test`), ~800ms, no browser |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173 |
-| Source | ~2,400 lines across 18 files |
+| Source | ~3,240 lines across 23 files |
 | Node | 20.20.2 locally |
 
 Stack versions, all current as of writing: Phaser 4.2.1, Vite 8.2.2,
@@ -342,6 +342,18 @@ the match table to 1.0 and all nine calibration tests stay green. Verified: four
 *other* tests fail. If a feature is designed not to move the aggregates, the
 aggregates cannot be its test.
 
+**23. Verifying with a pipeline, and reading the wrong exit code.** Ran
+`npm test 2>&1 | tail -3 && npx tsc --noEmit && echo ok` and watched it print
+`ok`. A pipeline's exit status is the *last* command's -- `tail` always succeeds
+-- so a failing test suite sailed through the `&&` chain, and a broken test got
+committed and stayed broken across two more commits that "verified" the same
+way. The failure was real: the three-run threshold moved 45m to 52m and an M1
+assertion still expected 48m to be three.
+
+**Never pipe a check through `tail` or `grep` and then trust `&&`.** Either run
+the check bare, or `set -o pipefail` first. The tail was there to keep the
+output short, which is a fine goal and cost a genuine regression.
+
 **20. A rule that was never actually written down.** Catches did not check
 whether the ball had bounced -- the entire definition of a catch in cricket.
 There *was* a `hasBounced` flag, so it looked handled; it is set when the
@@ -525,7 +537,7 @@ state for a small drift. Skip DRS; fun in theory, a UX nightmare.
 ```bash
 npm install
 npm run dev              # http://localhost:5173
-npm test                 # 69 tests, no browser
+npm test                 # 71 tests, no browser
 npm run build
 ```
 

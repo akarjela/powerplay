@@ -28,7 +28,11 @@ describe("scoring a struck ball", () => {
     expect(resolveGroundedBall(atMetres(4), false).runs).toBe(0);
     expect(resolveGroundedBall(atMetres(15), false).runs).toBe(1);
     expect(resolveGroundedBall(atMetres(32), false).runs).toBe(2);
-    expect(resolveGroundedBall(atMetres(48), false).runs).toBe(3);
+    // The three threshold moved 45m -> 52m when the shot distribution was
+    // measured: threes were coming out at 5% of shots against about 1% in real
+    // T20, where they are rarer than sixes. 48m is now two.
+    expect(resolveGroundedBall(atMetres(48), false).runs).toBe(2);
+    expect(resolveGroundedBall(atMetres(55), false).runs).toBe(3);
   });
 
   it("never returns 5, which is not a score off the bat", () => {
