@@ -11,6 +11,9 @@ part that makes you keep playing.
 **Status: Milestone 1.** The batting works. Teams, squads and the tournament are
 not built yet — see the milestones below.
 
+Swing timing is the whole game: mistime it and the bat has already stopped, so
+you dribble it 8m. Time it and you clear the rope.
+
 ```bash
 npm install
 npm run dev     # http://localhost:5173
@@ -47,6 +50,26 @@ declared in `src/game/config.ts` rather than buried as magic numbers.
 Speeds stay real. A 138kph delivery is measured leaving the hand at 8.94 px/step
 and arriving at the batter 0.55s later, against 0.52s in the real world; the
 difference is air resistance, which is also real.
+
+## Three bugs worth remembering
+
+Found by measuring rather than watching, and all three looked like "the swing
+feels bad" from the outside:
+
+1. **The outfield was painted, not simulated.** No static body at ground level,
+   so the ball fell straight through the pitch and passed ~100px *below* the
+   bat's arc. Unhittable at every timing.
+2. **The bat tunnelled through the ball.** At 60Hz a full swing moves the blade
+   tip ~22px per step — wider than the ball and wider than the blade. Matter has
+   no continuous collision detection, so the physics runs at 240Hz instead.
+3. **Rescaling per-step units by hand.** Matter normalises `setVelocity`,
+   `setAngularVelocity` and `frictionAir` against a fixed 16.667ms base delta, so
+   they must *not* be rescaled when the step rate changes. Doing it "correctly"
+   turned a 138kph delivery into a 34kph one.
+
+A fourth, non-bug: a backgrounded browser tab pauses `requestAnimationFrame`
+entirely, so the ball appears frozen and the physics looks broken when nothing
+is wrong. Step the engine by hand to measure it.
 
 ## Why the bat is pinned rather than positioned
 

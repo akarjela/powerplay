@@ -4,22 +4,23 @@ import {
   BALL_RADIUS, BATTER_X, BOUNDARY, BOWLER_X, CANVAS, GROUND_Y, MAX_SCROLL,
   PX_PER_METRE, STUMP_HEIGHT, STUMP_WIDTH, kph, m,
 } from "../config";
-import { BAT_LENGTH, BAT_WIDTH } from "../config";
 import { Bat } from "../physics/bat";
 import { FIELD, bowled, catchableBy, caught, metresDownfield, resolveGroundedBall } from "../physics/field";
+import { BallSprite, drawBatsman, drawFielder, drawStumps, makeBat } from "../visuals/figures";
+import { drawStadium } from "../visuals/stadium";
 import type { Outcome } from "../../sim/types";
 
 /** Milestone 1 uses one hardcoded bowler. M3 replaces this with squad data. */
-const BOWLER = { name: "Quick", paceKph: 138 };
+const BOWLER = { name: "Rana", paceKph: 138 };
 
 /** Balls settle slowly; stop waiting once it is clearly finished. */
 const SETTLED_SPEED = 0.35;
 
 export class MatchScene extends Phaser.Scene {
   private bat!: Bat;
+  private batGfx!: Phaser.GameObjects.Container;
   private ball?: MatterJS.BodyType;
-  private ballGfx!: Phaser.GameObjects.Arc;
-  private batGfx!: Phaser.GameObjects.Rectangle;
+  private ballSprite!: BallSprite;
 
   private awaitingResult = false;
   private hasBounced = false;
@@ -28,71 +29,76 @@ export class MatchScene extends Phaser.Scene {
   private wickets = 0;
   private ballsFaced = 0;
 
-  private statusText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
+  private statusText!: Phaser.GameObjects.Text;
+  private callText!: Phaser.GameObjects.Text;
 
   constructor() {
     super("match");
   }
 
   create(): void {
-    this.matter.world.setBounds(0, -2000, CANVAS.width * 4, 3000);
-    this.cameras.main.setBackgroundColor("#183b1f");
+    const groundWidth = BATTER_X + BOUNDARY + 400;
+    // Ceiling and side walls only. The floor is a real body at GROUND_Y, below,
+    // because the world bounds sit at the bottom of the whole simulated volume
+    // and the outfield is 400px above that.
+    this.matter.world.setBounds(0, -3000, groundWidth, 4000);
 
-    this.drawGround();
+    /**
+     * The outfield, as physics rather than just paint.
+     *
+     * Without this the ball falls straight through the drawn pitch. It never
+     * bounces, and by the time it reaches the crease it is ~100px below the
+     * bat's arc -- so the bat cannot touch it at any swing timing, which reads
+     * as "the swing is broken" when the swing is fine and the ground is missing.
+     */
+    this.matter.add.rectangle(groundWidth / 2, GROUND_Y + 60, groundWidth, 120, {
+      isStatic: true,
+      label: "ground",
+      friction: 0.75,
+      // A cricket ball off a hard pitch keeps a good deal of pace.
+      restitution: 0.42,
+    });
 
-    this.bat = new Bat(this, BATTER_X + 22, GROUND_Y - 62);
-    this.batGfx = this.add.rectangle(0, 0, BAT_WIDTH, BAT_LENGTH, 0xe8d6a0).setDepth(5);
+    drawStadium(this);
+    for (const fielder of FIELD) drawFielder(this, BATTER_X + m(fielder.distance), fielder.name);
+    drawStumps(this, BATTER_X);
+    drawStumps(this, BOWLER_X);
 
-    this.ballGfx = this.add.circle(0, 0, BALL_RADIUS, 0xc4342b).setDepth(6).setVisible(false);
+    const handsY = GROUND_Y - 62;
+    drawBatsman(this, BATTER_X + 4, handsY);
 
-    this.scoreText = this.add.text(20, 16, "", {
-      fontFamily: "monospace", fontSize: "26px", color: "#ffffff",
-    }).setScrollFactor(0).setDepth(20);
+    this.bat = new Bat(this, BATTER_X + 22, handsY);
+    this.batGfx = makeBat(this);
+    this.ballSprite = new BallSprite(this);
 
-    this.statusText = this.add.text(20, 52, "Drag to swing. Click to face the first ball.", {
-      fontFamily: "monospace", fontSize: "17px", color: "#cfe8d2",
-    }).setScrollFactor(0).setDepth(20);
-
-    this.updateScore();
+    this.buildHud();
 
     this.input.on("pointerdown", () => {
       if (!this.ball && !this.awaitingResult) this.bowl();
     });
   }
 
-  private drawGround(): void {
-    const g = this.add.graphics().setDepth(0);
+  private buildHud(): void {
+    this.add.rectangle(16, 14, 250, 76, 0x0a1428, 0.75)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(20)
+      .setStrokeStyle(1, 0xffffff, 0.14);
 
-    g.fillStyle(0x2d6b36).fillRect(0, GROUND_Y, CANVAS.width * 4, 400);
-    // The pitch strip.
-    g.fillStyle(0xc9b481).fillRect(BATTER_X - m(2), GROUND_Y - 5, BOWLER_X - BATTER_X + m(4), 10);
+    this.scoreText = this.add.text(30, 24, "", {
+      fontFamily: "system-ui, sans-serif", fontSize: "30px", color: "#ffffff", fontStyle: "bold",
+    }).setScrollFactor(0).setDepth(21);
 
-    // Boundary rope.
-    g.lineStyle(4, 0xffffff, 0.9);
-    g.lineBetween(BATTER_X + BOUNDARY, GROUND_Y - 30, BATTER_X + BOUNDARY, GROUND_Y);
+    this.statusText = this.add.text(30, 62, "", {
+      fontFamily: "system-ui, sans-serif", fontSize: "13px", color: "#8fb8a0",
+    }).setScrollFactor(0).setDepth(21);
 
-    // Distance markers every 10m -- makes the physics legible while tuning.
-    for (let d = 10; d <= 70; d += 10) {
-      const x = BATTER_X + m(d);
-      g.lineStyle(1, 0xffffff, 0.18).lineBetween(x, GROUND_Y - 14, x, GROUND_Y);
-      this.add.text(x, GROUND_Y + 6, `${d}m`, {
-        fontFamily: "monospace", fontSize: "11px", color: "#9fc3a6",
-      }).setOrigin(0.5, 0).setDepth(1);
-    }
+    // Big centred call for the result of a ball -- "SIX!", "Caught at mid-on".
+    this.callText = this.add.text(CANVAS.width / 2, 150, "", {
+      fontFamily: "system-ui, sans-serif", fontSize: "44px", color: "#ffffff", fontStyle: "bold",
+      stroke: "#0a1428", strokeThickness: 6,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setAlpha(0);
 
-    for (const fielder of FIELD) {
-      const x = BATTER_X + m(fielder.distance);
-      this.add.circle(x, GROUND_Y - 13, 13, 0x1d4ed8).setDepth(2);
-      this.add.text(x, GROUND_Y - 32, fielder.name, {
-        fontFamily: "monospace", fontSize: "11px", color: "#dbeafe",
-      }).setOrigin(0.5, 1).setDepth(2);
-    }
-
-    // Stumps at both ends.
-    for (const x of [BATTER_X, BOWLER_X]) {
-      this.add.rectangle(x, GROUND_Y - STUMP_HEIGHT / 2, STUMP_WIDTH, STUMP_HEIGHT, 0xf5f5f0).setDepth(3);
-    }
+    this.updateHud("Click to face up. Move the mouse to swing.");
   }
 
   private bowl(): void {
@@ -100,7 +106,6 @@ export class MatchScene extends Phaser.Scene {
     this.struck = false;
     this.awaitingResult = false;
 
-    // Released from around head height at the bowler's end.
     const ball = this.matter.add.circle(BOWLER_X, GROUND_Y - 90, BALL_RADIUS, {
       restitution: 0.55,
       friction: 0.04,
@@ -109,12 +114,13 @@ export class MatchScene extends Phaser.Scene {
       label: "ball",
     });
 
-    // Aimed slightly down, to pitch on a length rather than arrive as a full toss.
+    // Aimed slightly down, so it pitches on a length rather than arriving as a
+    // full toss.
     this.matter.body.setVelocity(ball, { x: -kph(BOWLER.paceKph), y: kph(BOWLER.paceKph) * 0.09 });
 
     this.ball = ball;
-    this.ballGfx.setVisible(true);
-    this.statusText.setText(`${BOWLER.name} runs in — ${BOWLER.paceKph}kph`);
+    this.ballSprite.setVisible(true);
+    this.updateHud(`${BOWLER.name} in — ${BOWLER.paceKph}kph`);
   }
 
   update(): void {
@@ -125,18 +131,18 @@ export class MatchScene extends Phaser.Scene {
     const ball = this.ball;
     if (!ball) return;
 
-    this.ballGfx.setPosition(ball.position.x, ball.position.y);
-    this.cameras.main.scrollX = Phaser.Math.Clamp(ball.position.x - CANVAS.width * 0.42, 0, MAX_SCROLL);
+    this.ballSprite.update(ball.position.x, ball.position.y);
+    this.cameras.main.scrollX = Phaser.Math.Clamp(
+      ball.position.x - CANVAS.width * 0.42, 0, MAX_SCROLL,
+    );
 
-    // Struck once it is travelling downfield again.
     if (!this.struck && ball.velocity.x > 1) {
       this.struck = true;
-      this.statusText.setText("Middled it!");
+      this.cameras.main.shake(90, 0.004);
     }
 
     if (!this.hasBounced && ball.position.y >= GROUND_Y - BALL_RADIUS - 1) this.hasBounced = true;
 
-    // Bowled: the ball reaches the stumps without being hit.
     if (!this.struck && ball.position.x <= BATTER_X + STUMP_WIDTH && ball.position.y > GROUND_Y - STUMP_HEIGHT) {
       return this.resolve(bowled());
     }
@@ -145,8 +151,9 @@ export class MatchScene extends Phaser.Scene {
       const fielder = catchableBy(ball.position.x, ball.position.y);
       if (fielder && ball.velocity.y > 0) return this.resolve(caught(fielder));
 
-      const clearedOnTheFull = !this.hasBounced && metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE;
-      if (clearedOnTheFull) return this.resolve(resolveGroundedBall(ball.position.x, true));
+      if (!this.hasBounced && metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE) {
+        return this.resolve(resolveGroundedBall(ball.position.x, true));
+      }
     }
 
     const speed = Math.hypot(ball.velocity.x, ball.velocity.y);
@@ -154,7 +161,7 @@ export class MatchScene extends Phaser.Scene {
     const gone = metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE;
 
     if (settled || gone) {
-      if (!this.struck) return this.resolve({ runs: 0, description: "Beaten. No shot offered." });
+      if (!this.struck) return this.resolve({ runs: 0, description: "Beaten, no shot." });
       return this.resolve(resolveGroundedBall(ball.position.x, false));
     }
   }
@@ -167,18 +174,30 @@ export class MatchScene extends Phaser.Scene {
     this.ballsFaced += 1;
     if (outcome.wicket) this.wickets += 1;
 
-    this.updateScore();
-    this.statusText.setText(`${outcome.description}   —   click to face the next ball`);
+    this.announce(outcome);
+    this.updateHud("Click for the next ball");
 
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
-    this.ballGfx.setVisible(false);
+    this.ballSprite.setVisible(false);
 
-    this.time.delayedCall(150, () => { this.awaitingResult = false; });
+    this.time.delayedCall(400, () => {
+      this.awaitingResult = false;
+      this.cameras.main.scrollX = 0;
+    });
   }
 
-  private updateScore(): void {
+  private announce(outcome: Outcome): void {
+    const colour = outcome.wicket ? "#f87171" : outcome.runs >= 4 ? "#fbbf24" : "#e2e8f0";
+    this.callText.setText(outcome.description).setColor(colour).setAlpha(1).setScale(0.85);
+
+    this.tweens.add({ targets: this.callText, scale: 1, duration: 180, ease: "Back.easeOut" });
+    this.tweens.add({ targets: this.callText, alpha: 0, delay: 1100, duration: 400 });
+  }
+
+  private updateHud(status: string): void {
     const overs = `${Math.floor(this.ballsFaced / 6)}.${this.ballsFaced % 6}`;
-    this.scoreText.setText(`${this.score}/${this.wickets}   (${overs} ov)`);
+    this.scoreText.setText(`${this.score}/${this.wickets}`);
+    this.statusText.setText(`${overs} overs   ·   ${status}`);
   }
 }

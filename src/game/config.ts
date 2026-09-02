@@ -16,13 +16,35 @@
 
 export const PX_PER_METRE = 14;
 
-/** Frames per second Matter is stepped at, for velocity conversion. */
-const FPS = 60;
+/**
+ * Physics steps per second.
+ *
+ * 240, not the 60 you would reach for first. At 60Hz the blade tip of a full
+ * swing travels ~22px per step -- wider than the ball (12px) and wider than the
+ * blade itself -- so the bat teleports straight over the ball between steps and
+ * makes no contact at any timing. Matter has no continuous collision detection,
+ * so the fix is to make each step small enough that nothing can jump a gap.
+ *
+ * Everything below in per-step units derives from this. Change it and they all
+ * move together.
+ */
+export const PHYSICS_FPS = 240;
+
+/**
+ * Matter normalises setVelocity, setAngularVelocity and frictionAir against a
+ * 16.667ms base delta internally, so every per-step value below stays on this
+ * base no matter what PHYSICS_FPS is. Rescaling them by hand double-counts --
+ * doing so turned a 138kph delivery into a 34kph one.
+ *
+ * PHYSICS_FPS therefore buys collision resolution and nothing else, which is
+ * exactly what it is for.
+ */
+const BASE_FPS = 60;
 
 export const m = (metres: number) => metres * PX_PER_METRE;
 
 /** Matter's setVelocity is px-per-step, not px-per-second. */
-export const kph = (speed: number) => (speed * 1000 / 3600) * PX_PER_METRE / FPS;
+export const kph = (speed: number) => (speed * 1000 / 3600) * PX_PER_METRE / BASE_FPS;
 
 // -- the ground, to the Laws of Cricket ------------------------------------
 
@@ -42,9 +64,18 @@ export const STUMP_WIDTH = 8;
 // -- scene layout ----------------------------------------------------------
 
 export const CANVAS = { width: 1280, height: 720 };
-/** Leaves ~14m of headroom above the ground, which a lofted six needs. */
-export const GROUND_Y = 640;
+/** Where the players stand. Leaves headroom above for a lofted six. */
+export const GROUND_Y = 600;
 /** The striker's stumps. Everything downfield is measured from here. */
+/**
+ * The far edge of the outfield, where the stands begin.
+ *
+ * A pure side-on view puts everything on one line, so a fielder at 18m appears
+ * to be standing among the boundary hoardings. Lifting the stands above the
+ * player line fakes just enough depth to read as an outfield, without pretending
+ * to be a perspective projection.
+ */
+export const HORIZON_Y = GROUND_Y - 95;
 export const BATTER_X = 160;
 export const BOWLER_X = BATTER_X + PITCH_LENGTH;
 /** How far the camera may travel before the boundary leaves the frame. */
@@ -53,9 +84,17 @@ export const MAX_SCROLL = BATTER_X + BOUNDARY + 120 - CANVAS.width;
 // -- feel ------------------------------------------------------------------
 
 /**
- * The single number deciding whether the bat feels heavy or twitchy. It wants
- * tuning by playing, not by reasoning -- there is no test for it.
+ * Peak swing speed, radians per physics step. A real batsman swings through
+ * roughly 180 degrees in about 0.15s; at 60fps that is ~0.35 rad/step, so this
+ * is deliberately in the same neighbourhood rather than an arbitrary number.
+ *
+ * The first version of this controller was far weaker, and the bat stalled 29
+ * degrees short of the pointer because gravity's torque on the blade cancelled
+ * it out. The ball arrives 0.55s after release; a bat that needs 0.5s to turn
+ * 70 degrees cannot be swung at anything.
  */
-export const SWING_TORQUE = 0.012;
-/** Opposes the torque so the bat settles instead of oscillating. */
-export const SWING_DAMPING = 0.14;
+export const MAX_SWING_SPEED = 0.42;
+/** How hard the bat chases the pointer. Higher = twitchier, less lag, less skill. */
+export const SWING_RESPONSE = 0.30;
+/** Smooths the approach so the bat eases into the target instead of snapping. */
+export const SWING_SMOOTHING = 0.45;

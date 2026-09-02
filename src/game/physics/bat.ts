@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { BAT_LENGTH, BAT_WIDTH, SWING_DAMPING, SWING_TORQUE } from "../config";
+import { BAT_LENGTH, BAT_WIDTH, MAX_SWING_SPEED, SWING_RESPONSE, SWING_SMOOTHING } from "../config";
 
 /**
  * The bat: a rigid body pinned at the handle, driven toward the pointer.
@@ -34,12 +34,17 @@ export class Bat {
       BAT_WIDTH,
       BAT_LENGTH,
       {
-        // Heavy enough to not be knocked aside by the ball, light enough to swing.
-        density: 0.02,
-        frictionAir: 0.02,
+        // Heavy relative to the ball so a middled shot transfers energy to the
+        // ball rather than the ball knocking the blade aside.
+        density: 0.05,
+        frictionAir: 0,
         // A real bat barely rebounds; the ball's own restitution does the work.
         restitution: 0.35,
         label: "bat",
+        // A batsman holds the bat up. Letting gravity pull the blade down means
+        // the swing controller spends its whole budget fighting it, and stalls
+        // partway to the pointer -- which is exactly what it used to do.
+        ignoreGravity: true,
       },
     );
 
@@ -53,9 +58,15 @@ export class Bat {
   /**
    * One step of the swing controller.
    *
-   * A proportional-derivative controller: torque toward the pointer, opposed by
-   * a term proportional to current spin. Without the derivative term the bat
-   * overshoots and oscillates around the target angle forever.
+   * Velocity-targeting rather than torque-summing. The bat aims for an angular
+   * velocity proportional to how far it is from the pointer, capped at
+   * MAX_SWING_SPEED, and eases toward that target rather than snapping to it.
+   *
+   * The cap is what makes the bat feel like an object with weight, and it is
+   * where the skill lives: past a certain angle you simply cannot get there in
+   * time, so a late swing misses. The earlier version summed torque against a
+   * damping term, which sounds equivalent and is not -- with gravity acting on
+   * the blade it had a stall point it could never rotate past.
    */
   update(pointer: Phaser.Input.Pointer): void {
     const target = Math.atan2(
@@ -68,10 +79,15 @@ export class Bat {
     while (error > Math.PI) error -= Math.PI * 2;
     while (error < -Math.PI) error += Math.PI * 2;
 
-    const torque = error * SWING_TORQUE - this.body.angularVelocity * SWING_DAMPING;
+    const wanted = Phaser.Math.Clamp(
+      error * SWING_RESPONSE,
+      -MAX_SWING_SPEED,
+      MAX_SWING_SPEED,
+    );
+
     this.scene.matter.body.setAngularVelocity(
       this.body,
-      this.body.angularVelocity + torque,
+      Phaser.Math.Linear(this.body.angularVelocity, wanted, SWING_SMOOTHING),
     );
   }
 
