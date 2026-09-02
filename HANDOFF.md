@@ -1,7 +1,8 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-02. Milestone 1 complete: the batting works and has a real
-skill curve. Nothing is mid-edit; the tree is clean and every test passes._
+_Last updated: 2026-09-02. Milestones 1 and 2 complete: the batting works and
+has a real skill curve, and a whole match now resolves headlessly from a seed.
+Nothing is mid-edit; the tree is clean and every test passes._
 
 ## Goal
 
@@ -47,17 +48,20 @@ prevent that.
 
 ## Current state
 
-**Milestone 1 is done and the game is playable.** Timing genuinely matters:
+**M1 and M2 are done.** The game is playable and timing genuinely matters:
 swing early and the bat has already stopped, so you dribble it 8m; time it and
-it carries 68m for six.
+it carries 68m for six. Separately, `src/sim/` resolves a full T20 match —
+toss, two innings, scorecard, result — headlessly and reproducibly.
+
+The two halves have not met yet. That is M3.
 
 | | |
 | --- | --- |
-| Repo | Local git, 3 commits, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 11 passing (`npm test`), ~200ms, no browser |
+| Repo | Local git, 4 commits, `main`. **Not pushed to GitHub** — no remote set |
+| Tests | 50 passing (`npm test`), ~450ms, no browser |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173 |
-| Source | ~940 lines across 9 files |
+| Source | ~1,850 lines across 15 files |
 | Node | 20.20.2 locally |
 
 Stack versions, all current as of writing: Phaser 4.2.1, Vite 8.2.2,
@@ -75,6 +79,22 @@ Not asserted — measured by stepping the Matter engine by hand from the console
 | Mistimed swing | 8m |
 | Well-timed swing | 68m — six |
 | Latest-timed swing | 96m (probably a touch generous; see rough edges) |
+
+### Measured simulation
+
+Aggregates over three generated 45-match seasons, which is what
+`tests/calibration.test.ts` asserts. Real IPL numbers in brackets.
+
+| | |
+| --- | --- |
+| First-innings total | 157–169 (≈165) |
+| Wickets an innings | 5.6–6.3 (≈6) |
+| Strike rate | 133–141 (≈135) |
+| Economy | ≈8.2 (≈8.3) |
+| Dot balls | 39–41% (≈36%) |
+| Fours / sixes an innings | 12–13 / 7.5–8.2 (≈13 / 9) |
+| Chases successful | 44–67% of matches |
+| Elite vs poor attack | 25 runs and ~1 wicket an innings |
 
 ## Files that matter
 
@@ -98,6 +118,24 @@ compromises live in one file.
 - `src/sim/types.ts` — `Outcome`, `Runs`, `Dismissal`, `Extra`, plus
   `countsAsBall` and `runsAgainstBowler`. Nothing here may import Phaser
 
+**The simulation.** Pure: no Phaser, no DOM, no `Math.random`. In dependency
+order, and this is also the order to read them in.
+
+- `src/sim/rng.ts` — seeded mulberry32. Always passed in as a parameter, never
+  reached for globally; that is what makes a season replayable
+- `src/sim/player.ts` — `Batter` (power, technique, aggression), `Bowler`
+  (pace, accuracy, movement, variation), `Squad`. Every attribute is 0–100 and
+  means one specific thing
+- `src/sim/delivery.ts` — bowler attributes to a `Delivery`. Also owns `Phase`
+  (powerplay / middle / death). Produces two derived scalars the outcome model
+  reads: `threat` (danger) and `latitude` (room to score)
+- `src/sim/outcome.ts` — **the model**. Three steps per ball, in this order:
+  intent, then wicket, then runs. All the tuning constants live at the top
+- `src/sim/innings.ts` — bookkeeping only: strike rotation, the over, who may
+  bowl next, when the innings ends. It makes no judgement about what happened
+- `src/sim/match.ts` — toss, two innings, result, and the net-run-rate helper
+  M4 needs
+
 **Scene and visuals**
 
 - `src/game/scenes/MatchScene.ts` — the ball's lifecycle, camera, HUD
@@ -109,6 +147,13 @@ compromises live in one file.
 **Tests**
 
 - `tests/field.test.ts` — 11 tests over the pure outcome logic
+- `tests/rng.test.ts` — 6 tests: replay, bounds, weighted proportions
+- `tests/innings.test.ts` — 24 tests. Bookkeeping invariants (the scorecard
+  adds up three separate ways), the bowling allocation, attribute sensitivity,
+  and ball-for-ball replay from a seed
+- `tests/calibration.test.ts` — 9 tests. **The one that matters**; see below
+- `tests/squads.ts` — generated squads for the tests. Not a fixture file you
+  should grow into real data; real squads land in `src/` in M3
 
 ## Scale: what is honest and what is not
 
@@ -177,10 +222,34 @@ check the test's own aim before changing the game.
 returned clean zeros because the harness was measuring nothing. A suspiciously
 perfect result is a reason to check the harness, not to celebrate.
 
+**9. Calibrating against one season.** 45 matches feels like a lot and is not.
+The first calibration test passed comfortably inside every band on its own seed
+while a different seed came back at 3.7 wickets an innings — outside the band
+the test claimed to enforce. A model can drift out of calibration and still look
+fine on the seed you happen to have checked in. It samples three leagues now,
+and it still runs in under a second. The general form of this trap: **a green
+band is not the same as a plausible league.** Print the actual numbers.
+
+**10. Building difficulty out of length and line alone.** The first threat
+formula weighted the length/line traits at 0.55, and those traits all sit
+between 0.25 and 0.70 — a narrow band, and both attacks draw from it. The
+result was that a 92-accuracy attack and a 12-accuracy one differed by 8% of an
+innings, which would have made squad quality decorative and the whole tournament
+pointless. Movement carries most of the weight now. **The check that catches
+this is an A/B against extreme squads**, not a season average: a season average
+is dominated by the middle of the distribution and looks perfectly healthy while
+the ends do nothing. `tests/innings.test.ts` has one per attribute.
+
+**11. Asserting a gap before measuring it.** The test that caught #10 asserted
+the elite attack would concede 20 fewer runs; the real gap was 12.6, so it
+failed, and the first instinct was to read the failure as a sign the model had
+the *direction* wrong. It did not — the number was just smaller than the guess.
+Measure the effect, then write the threshold under it.
+
 ## Next steps
 
-**Immediate, and it needs a human.** Play ten overs and judge the swing feel.
-Two knobs in `config.ts`:
+**Still outstanding from M1, and it needs a human.** Play ten overs and judge
+the swing feel. Two knobs in `config.ts`:
 
 - `MAX_SWING_SPEED` (0.42) — how fast the bat can move
 - `SWING_RESPONSE` (0.30) — how hard it chases the pointer. Lower means more lag,
@@ -191,23 +260,37 @@ milestone that can swallow unlimited time: give it a fixed budget, accept "good
 enough", and move on. A great tournament around a decent bat beats a perfect bat
 with nothing behind it.
 
-**Then M2 — the pure simulation.** `src/sim/` in full: `rng.ts` (mulberry32),
-`delivery.ts` (bowler attributes to a `Delivery`), `outcome.ts` (batter vs bowler
-to an `Outcome`, for AI-batted balls), `innings.ts`, `match.ts`. Done when a full
-20-over innings resolves headlessly with a correct scorecard and the same seed
-produces the same match twice.
+**M3, and it is the milestone that proves the architecture.** Three pieces:
 
-The test that matters most in M2 is **calibration**: simulate a 45-match season
-and assert plausible aggregates — team totals 150–200, strike rates 120–160,
-economy 6–10. Without it, tuning one attribute silently breaks the tournament and
-nothing tells you.
+1. `src/sim/bridge.ts` — converts a physics result into an `Outcome`. The
+   physics path already produces one via `field.ts`, so this is mostly about
+   *context*: the sim's `Outcome` knows who bowled and what the delivery was,
+   and the physics path currently does not.
+2. **Squad data lands in `src/`.** Ten fictional franchises, real cities, real
+   attribute spreads. `tests/squads.ts` generates plausible players and is the
+   shape to follow — but do not promote it; it is a test fixture and should stay
+   one.
+3. `MatchScene.ts` faces a real attack. Replace the hardcoded 138kph seamer with
+   `bowl()`, and map the returned `Delivery` onto the physics: `speed` through
+   `kph()`, `length` onto the pitch point, `deviation` onto lateral movement.
 
-**Then M3** — `bridge.ts` converts a physics result into an `Outcome`; squad data
-lands; you bat against a real attack whose attributes visibly change the
-delivery. **M4** — ten franchises, single round robin (9 matches each), IPL
-playoff bracket (Qualifier 1, Eliminator, Qualifier 2, Final), points table with
-net run rate as the tiebreak. **M5** — `localStorage`, orange/purple cap tables,
-sound, mobile touch, deploy.
+Done when the attack you face visibly changes with the bowler, and when your
+innings and the AI's produce the same scorecard type without either path knowing
+which it is.
+
+The thing to watch in M3: the `Delivery` fields the physics can honestly render.
+`speed` is direct. `length` is a pitch point and needs the release height
+thought through — see the scale mismatch above. `latitude` and `threat` are
+*derived scalars for the model* and should not leak into the physics; if the
+scene starts reading `threat`, the two paths have begun to diverge and the seam
+is being eroded.
+
+**Then M4** — ten franchises, single round robin (9 matches each), IPL playoff
+bracket (Qualifier 1, Eliminator, Qualifier 2, Final), points table with net run
+rate as the tiebreak. `netRunRateInnings()` in `match.ts` already exists and
+already handles the rule people get wrong: a side bowled out is charged the full
+twenty overs. **M5** — `localStorage`, orange/purple cap tables, sound, mobile
+touch, deploy.
 
 ## Known rough edges
 
@@ -223,8 +306,10 @@ sound, mobile touch, deploy.
   does not have one.
 - **Running between the wickets is not simulated.** Distance stands in for it,
   deliberately conservatively.
-- **No LBW, run-out or stumped.** The `Dismissal` type lists them; only `bowled`
-  and `caught` are produced.
+- **The physics path still only produces `bowled` and `caught`.** The sim
+  produces all five. That asymmetry is fine — a human innings genuinely cannot
+  be run out when running is not simulated — but it means the two paths will
+  give slightly different dismissal mixes, and a season's stats will show it.
 - **The bowler is hardcoded** in `MatchScene.ts` as one 138kph seamer. M3
   replaces it.
 - **The crowd is drawn with `Math.random`.** Fine — it is decoration and runs
@@ -232,6 +317,19 @@ sound, mobile touch, deploy.
   come from a seed.
 - **`window.__game` is exposed in dev builds only**, guarded by
   `import.meta.env.DEV`. It is the intended way to measure the physics.
+- **The sim's dot-ball rate is 39–41% against a real ≈36%.** Small, and it is
+  the one aggregate sitting outside its real-world value rather than inside it.
+  If totals ever need lifting, this is the honest place to take it from.
+- **Ties happen in roughly 1–6% of matches**, against ≈1% in real T20. There is
+  no super over; ties stand, and M4's points table will need to award one point
+  each.
+- **The sim has no run-chase collapse and no "keeping wickets for the death".**
+  `chooseIntent` reads wickets in hand and the required rate, but a batter never
+  plans an over ahead. It reads as cricket in aggregate; it would not survive a
+  close look at a single tense chase.
+- **`tests/squads.ts` is a test fixture, not data.** It generates plausible
+  players so calibration has a realistic league to run against. Real squads go
+  in `src/` in M3; do not grow this file into them.
 - **Not pushed anywhere.** No git remote is configured.
 
 ## Running it
@@ -239,7 +337,7 @@ sound, mobile touch, deploy.
 ```bash
 npm install
 npm run dev              # http://localhost:5173
-npm test                 # 11 tests, no browser
+npm test                 # 50 tests, no browser
 npm run build
 ```
 
