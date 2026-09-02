@@ -48,11 +48,22 @@ export interface Delivery {
   illegal?: "wide" | "no-ball";
 }
 
-/** Length by phase, before accuracy pulls it toward the one that was intended. */
-const LENGTH_INTENT: Record<Phase, Length> = {
-  powerplay: "good",
-  middle: "good",
-  death: "yorker",
+/**
+ * What a bowler is trying to bowl in each phase: weights over
+ * [yorker, full, good, short].
+ *
+ * This was a single intended length per phase -- "good", or "yorker" at the
+ * death -- and accuracy hit it about 80% of the time. Measured, that produced a
+ * league of 53% good and 30% yorkers with only 8% short, which meant the front
+ * foot was the right choice on 92% of deliveries. A footwork decision that is
+ * right nine times in ten by default is not a decision, so the mix is now a
+ * distribution and a real one: back-of-a-length is a quarter of T20 bowling.
+ */
+const LENGTH_MIX: Record<Phase, number[]> = {
+  powerplay: [0.08, 0.22, 0.45, 0.25],
+  middle: [0.10, 0.18, 0.47, 0.25],
+  // Yorkers and the slower bouncer; almost nothing on a good length.
+  death: [0.38, 0.20, 0.22, 0.20],
 };
 
 /** How much room each length gives the batter, and how often it threatens. */
@@ -99,8 +110,10 @@ export function bowl(bowler: Bowler, phase: Phase, rng: Rng): Delivery {
     return blankDelivery(bowler, speedOf(pace, variation, phase, rng), "no-ball");
   }
 
-  const intended = LENGTH_INTENT[phase];
-  const length = rng.chance(0.30 + 0.55 * accuracy) ? intended : rng.pick(LENGTHS);
+  // Accuracy is how closely the bowler executes the plan. Sprayed, they drift
+  // toward bowling every length equally, which is what a bad spell looks like.
+  const plan = LENGTH_MIX[phase];
+  const length = LENGTHS[rng.weighted(plan.map((w) => w * accuracy + 0.25 * (1 - accuracy)))];
   // Accurate bowlers live at the stumps and just outside off; loose ones drift.
   const line = rng.weighted([
     0.10 + 0.10 * (1 - accuracy), // wide-off

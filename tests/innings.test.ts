@@ -155,7 +155,20 @@ describe("attributes changing the cricket", () => {
     const loose = Array.from({ length: 40 }, () =>
       simulateInnings(uniformSquad("loose", { technique: 12 }, {}), attack, rng).wickets);
     const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
-    expect(mean(solid)).toBeLessThan(mean(loose) - 1);
+    const margin = mean(loose) - mean(solid);
+    expect(margin).toBeGreaterThan(1);
+
+    /**
+     * The upper bound matters as much as the lower one.
+     *
+     * Technique acts twice -- directly on the wicket chance, and through the
+     * footwork read in outcome.ts. When the footwork axis landed, leaving the
+     * direct term at its old strength put 4.50 wickets an innings between these
+     * two sides: a technique-12 team losing eight on its own. A one-sided
+     * assertion would have passed, and passed more comfortably than before,
+     * while the league quietly stopped making sense.
+     */
+    expect(margin).toBeLessThan(4);
   });
 
   it("concedes fewer runs with a better attack", () => {
