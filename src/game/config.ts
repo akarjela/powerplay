@@ -98,3 +98,72 @@ export const MAX_SWING_SPEED = 0.42;
 export const SWING_RESPONSE = 0.30;
 /** Smooths the approach so the bat eases into the target instead of snapping. */
 export const SWING_SMOOTHING = 0.45;
+
+// -- the four lengths, as physics ------------------------------------------
+
+/**
+ * How each length is bowled, and why these numbers and not others.
+ *
+ * All of it measured by stepping the engine by hand -- never from screenshots,
+ * because a backgrounded tab pauses requestAnimationFrame and the physics looks
+ * broken when it is fine. Measured at 138kph:
+ *
+ * | length | pitches | at the bat | blade angle needed |
+ * | ------ | ------- | ---------- | ------------------ |
+ * | yorker |   1.8m  |     9px    | past vertical -- out of reach from a neutral pivot |
+ * | full   |   4.3m  |    30px    | 52 degrees |
+ * | good   |   7.5m  |    39px    | 64 degrees |
+ * | short  |   9.4m  |    52px    | 79 degrees |
+ *
+ * That ladder is the point: each length asks for a visibly different bat, so
+ * reading the bounce is worth something. The yorker being unreachable from a
+ * neutral stance is deliberate -- it is what the front foot is *for*.
+ *
+ * Two things this cost, both found by measuring rather than assuming:
+ *
+ * A fixed aim per length does not survive a change of pace. At 148kph the
+ * yorker and the full ball both arrived at 21px, and at 115kph the ordering
+ * scrambled completely, because a slower ball carries less far before it
+ * pitches. So the aim is solved per length *and* per speed: `aim` is the value
+ * at the calibration pace and `aimPerKph` corrects it, both fitted to a binary
+ * search over the real engine at 112 / 125 / 138 / 150kph.
+ *
+ * The bounce has to vary with the length, and that is a scale correction rather
+ * than a claim about the ball. Vertical space near the batter is in figure
+ * scale -- the bat and stumps are drawn about 4x life -- while the ball's flight
+ * is in field scale, and a ball has further to travel after pitching short.
+ * Holding restitution constant and simply digging the ball in harder makes it
+ * arrive *lower* (23px, then 16px), because it has bounced and is already
+ * falling by the time it reaches the bat.
+ */
+export interface DeliveryShape {
+  /** Release height above the ground, in pixels. */
+  releaseUp: number;
+  /** Downward aim as a fraction of forward speed, at SHAPE_CALIBRATED_KPH. */
+  aim: number;
+  /** How much that aim must change per kph away from the calibration pace. */
+  aimPerKph: number;
+  restitution: number;
+}
+
+export const SHAPE_CALIBRATED_KPH = 138;
+
+export const DELIVERY_SHAPE: Record<"yorker" | "full" | "good" | "short", DeliveryShape> = {
+  yorker: { releaseUp: 150, aim: -0.019, aimPerKph: 0.0094, restitution: 0.70 },
+  full: { releaseUp: 115, aim: -0.007, aimPerKph: 0.0076, restitution: 0.70 },
+  good: { releaseUp: 90, aim: 0.083, aimPerKph: 0.0058, restitution: 0.70 },
+  short: { releaseUp: 80, aim: 0.169, aimPerKph: 0.0051, restitution: 0.85 },
+};
+
+/**
+ * The downward aim for a length at a given pace.
+ *
+ * Clamped at the bottom because a genuinely slow ball cannot be bowled as a
+ * yorker -- below about 120kph the aim needed runs off the end of what the
+ * trajectory can do and the ball lands fuller than intended. That is what a
+ * slower-ball yorker does in real cricket too, so it is left as the behaviour
+ * rather than special-cased.
+ */
+export function deliveryAim(shape: DeliveryShape, speedKph: number): number {
+  return Math.max(-0.20, shape.aim + shape.aimPerKph * (speedKph - SHAPE_CALIBRATED_KPH));
+}

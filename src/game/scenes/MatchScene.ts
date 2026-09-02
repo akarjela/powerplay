@@ -1,8 +1,8 @@
 import Phaser from "phaser";
 
 import {
-  BALL_RADIUS, BATTER_X, BOUNDARY, BOWLER_X, CANVAS, GROUND_Y, MAX_SCROLL,
-  PX_PER_METRE, STUMP_HEIGHT, STUMP_WIDTH, kph, m,
+  BALL_RADIUS, BATTER_X, BOUNDARY, BOWLER_X, CANVAS, DELIVERY_SHAPE, GROUND_Y,
+  MAX_SCROLL, PX_PER_METRE, STUMP_HEIGHT, STUMP_WIDTH, deliveryAim, kph, m,
 } from "../config";
 import { Bat } from "../physics/bat";
 import { FIELD, bowled, catchableBy, caught, metresDownfield, resolveGroundedBall } from "../physics/field";
@@ -10,9 +10,23 @@ import { BallSprite, drawBatsman, drawFielder, drawStumps, makeBat } from "../vi
 import { drawStadium } from "../visuals/stadium";
 import type { Outcome } from "../../sim/types";
 import { HumanInnings } from "../humanInnings";
+import { bowl, phaseOf } from "../../sim/delivery";
+import type { Delivery, Phase } from "../../sim/delivery";
+import { BALLS_PER_OVER } from "../../sim/innings";
+import { makeRng } from "../../sim/rng";
+import type { Rng } from "../../sim/rng";
+import type { Bowler } from "../../sim/player";
 
-/** Milestone 1 uses one hardcoded bowler. M3 replaces this with squad data. */
-const BOWLER = { name: "Rana", paceKph: 138 };
+/**
+ * One placeholder bowler until squads land in M3.
+ *
+ * The attributes are real now, not decorative: `bowl()` in the simulation turns
+ * them into a length, a line and a speed, and the scene renders whatever it is
+ * handed. So the attack you face already changes with the numbers here.
+ */
+const BOWLER: Bowler = {
+  id: "rana", name: "Rana", pace: 62, accuracy: 64, movement: 58, variation: 55,
+};
 
 /** Balls settle slowly; stop waiting once it is clearly finished. */
 const SETTLED_SPEED = 0.35;
@@ -37,6 +51,9 @@ export class MatchScene extends Phaser.Scene {
   private hasBounced = false;
   private struck = false;
   private innings = new HumanInnings();
+  /** Seeded, so an innings can be replayed. The sim's rule, kept on this side. */
+  private rng: Rng = makeRng("powerplay");
+  private delivery?: Delivery;
 
   private scoreText!: Phaser.GameObjects.Text;
   private rateText!: Phaser.GameObjects.Text;
@@ -139,6 +156,7 @@ export class MatchScene extends Phaser.Scene {
   /** A finished innings is a dead end without this. */
   private restart(): void {
     this.innings = new HumanInnings();
+    this.rng = makeRng("powerplay");
     this.updateHud("Click to face up. Move the mouse to swing.");
     this.callText.setAlpha(0);
   }
@@ -148,36 +166,49 @@ export class MatchScene extends Phaser.Scene {
     this.struck = false;
     this.awaitingResult = false;
 
-    /**
-     * Restitution is the lever that decides whether this game is playable.
-     *
-     * Measured by stepping the engine by hand: at 0.55 the ball arrived 27px
-     * above the ground at the stumps, and `bowled()` fires below 30px -- so
-     * every single ball that beat the bat hit the stumps. A playtest came back
-     * 48 wickets down off 61 balls, which reads as "the swing is broken" and is
-     * actually one constant being 3px wrong.
-     *
-     * At 0.70 the ball arrives 39px up, which is mid-blade and, in the figure
-     * scale the bat and stumps are already drawn in, about thigh height for a
-     * good length. Pitch distance (7.5m) and flight time (533ms) are unchanged
-     * -- restitution moves the bounce and nothing else, which is what makes it
-     * the right knob rather than slowing the delivery down.
-     */
-    const ball = this.matter.add.circle(BOWLER_X, GROUND_Y - 90, BALL_RADIUS, {
-      restitution: 0.70,
+    const over = Math.floor(this.innings.balls / BALLS_PER_OVER);
+    const delivery = this.nextDelivery(phaseOf(over));
+    this.delivery = delivery;
+
+    const shape = DELIVERY_SHAPE[delivery.length];
+    const ball = this.matter.add.circle(BOWLER_X, GROUND_Y - shape.releaseUp, BALL_RADIUS, {
+      restitution: shape.restitution,
       friction: 0.04,
       frictionAir: 0.006,
       density: 0.008,
       label: "ball",
     });
 
-    // Aimed slightly down, so it pitches on a length rather than arriving as a
-    // full toss.
-    this.matter.body.setVelocity(ball, { x: -kph(BOWLER.paceKph), y: kph(BOWLER.paceKph) * 0.09 });
+    const pace = kph(delivery.speed);
+    this.matter.body.setVelocity(ball, {
+      x: -pace,
+      y: pace * deliveryAim(shape, delivery.speed),
+    });
 
     this.ball = ball;
     this.ballSprite.setVisible(true);
-    this.updateHud(`${BOWLER.name} in — ${BOWLER.paceKph}kph`);
+    // The speed is fair to show -- you can see a quick one coming. The length is
+    // not, and is only revealed once the ball has been played.
+    this.updateHud(`${BOWLER.name} in — ${Math.round(delivery.speed)}kph`);
+  }
+
+  /**
+   * A legal delivery.
+   *
+   * The simulation produces wides and no-balls, and this scene cannot yet show
+   * one: the view is purely side-on, so there is no leg side to bowl down, and
+   * a bouncer over the batter's head does not work either -- measured, even at
+   * restitution 0.99 the ball tops out at 69px against a blade that reaches
+   * 114px, so it is always playable and would never be called. Rolling them
+   * away keeps the scene honest about what it can draw, at the cost of a human
+   * innings conceding no extras. Track 3 gives wides somewhere to go.
+   */
+  private nextDelivery(phase: Phase): Delivery {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const delivery = bowl(BOWLER, phase, this.rng);
+      if (!delivery.illegal) return delivery;
+    }
+    throw new Error("bowl() produced 30 illegal deliveries in a row");
   }
 
   update(): void {
@@ -243,7 +274,9 @@ export class MatchScene extends Phaser.Scene {
     this.innings.record(outcome);
 
     this.announce(outcome);
-    this.updateHud(this.innings.complete ? "Click to start a new innings" : "Click for the next ball");
+    const next = this.innings.complete ? "Click to start a new innings" : "Click for the next ball";
+    // Naming the length afterwards is how a player learns to read the bounce.
+    this.updateHud(this.delivery ? `${this.delivery.length} length   ·   ${next}` : next);
 
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
