@@ -1,9 +1,11 @@
 import Phaser from "phaser";
 
 import {
-  BALL_RADIUS, BATTER_X, BOUNDARY, BOWLER_X, CANVAS, DELIVERY_SHAPE, GROUND_Y,
-  MAX_SCROLL, PX_PER_METRE, STUMP_HEIGHT, STUMP_WIDTH, deliveryAim, kph, m,
+  BALL_RADIUS, BATTER_X, BOUNDARY, BOWLER_X, CANVAS, DELIVERY_SHAPE, GLOVE_LOCAL_X,
+  GROUND_Y, MAX_SCROLL, PIVOT, PX_PER_METRE, STUMP_HEIGHT, STUMP_WIDTH,
+  deliveryAim, kph, m,
 } from "../config";
+import type { Stance } from "../config";
 import { Bat } from "../physics/bat";
 import { FIELD, bowled, catchableBy, caught, metresDownfield, resolveGroundedBall } from "../physics/field";
 import { BallSprite, drawBatsman, drawFielder, drawStumps, makeBat } from "../visuals/figures";
@@ -26,6 +28,18 @@ import type { Bowler } from "../../sim/player";
  */
 const BOWLER: Bowler = {
   id: "rana", name: "Rana", pace: 62, accuracy: 64, movement: 58, variation: 55,
+};
+
+const STANCE_LABEL: Record<Stance, string> = {
+  front: "FRONT FOOT",
+  back: "BACK FOOT",
+  neutral: "no stance",
+};
+
+const STANCE_COLOUR: Record<Stance, string> = {
+  front: "#fbbf24",
+  back: "#38bdf8",
+  neutral: "#64748b",
 };
 
 /** Balls settle slowly; stop waiting once it is clearly finished. */
@@ -54,6 +68,10 @@ export class MatchScene extends Phaser.Scene {
   /** Seeded, so an innings can be replayed. The sim's rule, kept on this side. */
   private rng: Rng = makeRng("powerplay");
   private delivery?: Delivery;
+  private batsman!: Phaser.GameObjects.Container;
+  private stance: Stance = "neutral";
+  private stanceText!: Phaser.GameObjects.Text;
+  private keys!: Record<"front" | "back" | "frontAlt" | "backAlt", Phaser.Input.Keyboard.Key>;
 
   private scoreText!: Phaser.GameObjects.Text;
   private rateText!: Phaser.GameObjects.Text;
@@ -93,10 +111,10 @@ export class MatchScene extends Phaser.Scene {
     drawStumps(this, BATTER_X);
     drawStumps(this, BOWLER_X);
 
-    const handsY = GROUND_Y - 62;
-    drawBatsman(this, BATTER_X + 4, handsY);
-
-    this.bat = new Bat(this, BATTER_X + 22, handsY);
+    // One pivot, two consumers. These used to be set independently and were 8px
+    // apart, which was invisible while both stood still.
+    this.batsman = drawBatsman(this, PIVOT.x - GLOVE_LOCAL_X, PIVOT.y);
+    this.bat = new Bat(this, PIVOT.x, PIVOT.y);
     this.batGfx = makeBat(this);
     this.ballSprite = new BallSprite(this);
 
@@ -106,6 +124,15 @@ export class MatchScene extends Phaser.Scene {
       if (this.innings.complete) return this.restart();
       if (!this.ball && !this.awaitingResult) this.bowl();
     });
+
+    // The first keys bound in the project. The mouse keeps doing only the swing.
+    const keyboard = this.input.keyboard!;
+    this.keys = {
+      back: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
+      front: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
+      backAlt: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      frontAlt: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+    };
   }
 
   /**
@@ -139,6 +166,15 @@ export class MatchScene extends Phaser.Scene {
     this.overMarks = this.add.text(CANVAS.width - 26, top + 14, "", {
       fontFamily: "ui-monospace, Menlo, monospace", fontSize: "20px", color: "#e2e8f0",
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(21);
+
+    this.stanceText = this.add.text(220, top + 20, STANCE_LABEL.neutral, {
+      fontFamily: "system-ui, sans-serif", fontSize: "15px", color: STANCE_COLOUR.neutral,
+      fontStyle: "bold",
+    }).setScrollFactor(0).setDepth(21);
+
+    this.add.text(220, top + 40, "\u2190 back    \u2192 front", {
+      fontFamily: "system-ui, sans-serif", fontSize: "11px", color: "#64748b",
+    }).setScrollFactor(0).setDepth(21);
 
     this.statusText = this.add.text(CANVAS.width - 26, top + 44, "", {
       fontFamily: "system-ui, sans-serif", fontSize: "12px", color: "#94a3b8",
@@ -212,7 +248,14 @@ export class MatchScene extends Phaser.Scene {
   }
 
   update(): void {
+    this.readStance();
     this.bat.update(this.input.activePointer);
+    // The figure follows the hands, at a fraction of the travel -- the feet move
+    // further than the head does.
+    this.batsman.setPosition(
+      this.bat.pivotPoint.x - GLOVE_LOCAL_X,
+      GROUND_Y + (this.bat.pivotPoint.y - PIVOT.y) * 0.35,
+    );
     this.batGfx.setPosition(this.bat.body.position.x, this.bat.body.position.y);
     this.batGfx.setRotation(this.bat.body.angle);
 
@@ -264,6 +307,25 @@ export class MatchScene extends Phaser.Scene {
     if (settled || gone) {
       if (!this.struck) return this.resolve({ runs: 0, description: "Beaten, no shot." });
       return this.resolve(resolveGroundedBall(ball.position.x, false));
+    }
+  }
+
+  /**
+   * Which foot the player has committed to, this frame.
+   *
+   * Held rather than latched, but the pivot takes ~150ms to travel, so changing
+   * your mind after the ball has pitched does not arrive in time. Holding both
+   * is neutral, which is the honest reading of pressing both: no decision.
+   */
+  private readStance(): void {
+    const back = this.keys.back.isDown || this.keys.backAlt.isDown;
+    const front = this.keys.front.isDown || this.keys.frontAlt.isDown;
+    const stance: Stance = back === front ? "neutral" : back ? "back" : "front";
+
+    if (stance !== this.stance) {
+      this.stance = stance;
+      this.bat.setStance(stance);
+      this.stanceText.setText(STANCE_LABEL[stance]).setColor(STANCE_COLOUR[stance]);
     }
   }
 

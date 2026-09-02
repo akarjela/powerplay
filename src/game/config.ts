@@ -167,3 +167,58 @@ export const DELIVERY_SHAPE: Record<"yorker" | "full" | "good" | "short", Delive
 export function deliveryAim(shape: DeliveryShape, speedKph: number): number {
   return Math.max(-0.20, shape.aim + shape.aimPerKph * (speedKph - SHAPE_CALIBRATED_KPH));
 }
+
+// -- stance ----------------------------------------------------------------
+
+/** Neutral is what you get when you commit to neither foot. */
+export type Stance = "front" | "back" | "neutral";
+
+/**
+ * Where the bat's pivot sits. Everything about footwork is this and nothing
+ * else -- the punishment is geometric rather than a lookup table.
+ *
+ * The blade is BAT_LENGTH from the pivot, so the lowest point it can reach is
+ * (pivot height - 52). Against the arrival heights measured above:
+ *
+ *   front  pivot 54px up, blade reaches  2px -- the yorker at 9px is playable
+ *   neutral      62px up,               10px -- the yorker is right on the edge
+ *   back         68px up,               16px -- the yorker is unreachable
+ *
+ * and from the other end, the short ball at 47px wants the blade near
+ * horizontal off the front foot (82 degrees) against a comfortable 66 off the
+ * back. Nobody has to be told they played the wrong shot; the bat simply does
+ * not arrive.
+ *
+ * Front foot also moves the pivot 20px down the wicket, so the ball is met
+ * earlier. That is a timing change as well as a reach change, which is what
+ * makes committing forward a real decision rather than a free extension.
+ */
+export const STANCE_OFFSET: Record<Stance, { x: number; y: number }> = {
+  front: { x: 20, y: 8 },
+  neutral: { x: 0, y: 0 },
+  back: { x: -12, y: -6 },
+};
+
+/**
+ * How fast the pivot travels to a new stance, per rendered frame.
+ *
+ * Deliberately not instant. At 0.22 a stance change is most of the way there in
+ * about 150ms, against a ball that takes 533ms to arrive -- so changing your
+ * mind after the ball has pitched does not get there in time. The commitment
+ * cost is the same lag that makes the swing itself a skill, rather than a
+ * separate rule bolted on.
+ */
+export const STANCE_RESPONSE = 0.22;
+
+/** The striker's bat pivot when standing neutral. The one source of truth. */
+export const PIVOT = { x: BATTER_X + 22, y: GROUND_Y - 62 };
+
+/**
+ * `drawBatsman` puts the glove this far right of the container's origin, so the
+ * figure has to be drawn at PIVOT.x - this for the bat to be in his hands.
+ *
+ * The two were set independently before and disagreed by 8px. That was
+ * invisible while both were static and would have read as the bat detaching
+ * from the hands the moment the pivot started moving.
+ */
+export const GLOVE_LOCAL_X = 10;

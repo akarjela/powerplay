@@ -1,6 +1,10 @@
 import Phaser from "phaser";
 
-import { BAT_LENGTH, BAT_WIDTH, MAX_SWING_SPEED, SWING_RESPONSE, SWING_SMOOTHING } from "../config";
+import {
+  BAT_LENGTH, BAT_WIDTH, MAX_SWING_SPEED, STANCE_OFFSET, STANCE_RESPONSE,
+  SWING_RESPONSE, SWING_SMOOTHING,
+} from "../config";
+import type { Stance } from "../config";
 
 /**
  * The bat: a rigid body pinned at the handle, driven toward the pointer.
@@ -18,15 +22,29 @@ import { BAT_LENGTH, BAT_WIDTH, MAX_SWING_SPEED, SWING_RESPONSE, SWING_SMOOTHING
  * pointer is, so the bat lags the mouse. That lag is the entire skill of the
  * game: swing early and you are through the shot, swing late and you edge it.
  * Remove the lag and there is nothing left to be good at.
+ *
+ * It also *stands somewhere*. The pivot moves with the batter's stance, and
+ * because Matter re-reads a constraint's `pointA` on every solver step, moving
+ * it is a live change with no teardown. That is the whole footwork mechanic:
+ * back foot lifts the pivot out of a yorker's reach, front foot drops it into
+ * one, and neither needs the outcome model's permission.
  */
 export class Bat {
   readonly body: MatterJS.BodyType;
   private readonly scene: Phaser.Scene;
+  /**
+   * Mutated in place, never reassigned. Matter's `Constraint.create` returns the
+   * options object itself, so this is the very same object the solver reads as
+   * `pointA` -- which is what lets the pivot move without rebuilding anything.
+   */
   private readonly pivot: { x: number; y: number };
+  private readonly home: { x: number; y: number };
+  private stance: Stance = "neutral";
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
     this.pivot = { x, y };
+    this.home = { x, y };
 
     this.body = scene.matter.add.rectangle(
       x,
@@ -55,6 +73,16 @@ export class Bat {
     });
   }
 
+  /** Commit to a foot. Takes effect over ~150ms, not instantly; see STANCE_RESPONSE. */
+  setStance(stance: Stance): void {
+    this.stance = stance;
+  }
+
+  /** Where the pivot currently is, so the batsman can be drawn holding the bat. */
+  get pivotPoint(): { x: number; y: number } {
+    return this.pivot;
+  }
+
   /**
    * One step of the swing controller.
    *
@@ -69,6 +97,10 @@ export class Bat {
    * the blade it had a stall point it could never rotate past.
    */
   update(pointer: Phaser.Input.Pointer): void {
+    const offset = STANCE_OFFSET[this.stance];
+    this.pivot.x += (this.home.x + offset.x - this.pivot.x) * STANCE_RESPONSE;
+    this.pivot.y += (this.home.y + offset.y - this.pivot.y) * STANCE_RESPONSE;
+
     const target = Math.atan2(
       pointer.worldY - this.pivot.y,
       pointer.worldX - this.pivot.x,
