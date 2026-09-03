@@ -1,7 +1,7 @@
 import type { Rng } from "./rng";
 import type { Squad } from "./player";
 import { simulateInnings, OVERS, BALLS_PER_OVER, WICKETS, oversOf } from "./innings";
-import type { InningsResult } from "./innings";
+import type { InningsResult, InningsSummary } from "./innings";
 
 /**
  * A whole match: toss, two innings, a result.
@@ -41,7 +41,13 @@ export function simulateMatch(home: Squad, away: Squad, rng: Rng): MatchResult {
   return { home, away, tossWinner, tossDecision, first, second, ...resultOf(first, second) };
 }
 
-function resultOf(first: InningsResult, second: InningsResult) {
+/**
+ * Who won, by how much, in words. Takes summaries, so an innings you batted
+ * yourself and one the model rolled are judged by the same sentence.
+ */
+export function resultOf(first: InningsSummary, second: InningsSummary): {
+  winner: Squad | null; margin: string; summary: string;
+} {
   if (second.runs > first.runs) {
     const ballsLeft = OVERS * BALLS_PER_OVER - second.balls;
     const margin = `won by ${WICKETS - second.wickets} wicket${WICKETS - second.wickets === 1 ? "" : "s"} (${ballsLeft} ball${ballsLeft === 1 ? "" : "s"} remaining)`;
@@ -76,7 +82,7 @@ function resultOf(first: InningsResult, second: InningsResult) {
  * overs, not the overs it actually lasted. Being dismissed for 90 in 14 overs is
  * a disaster for your NRR, and it should be. M4's points table depends on this.
  */
-export function netRunRateInnings(innings: InningsResult): { runs: number; overs: number } {
+export function netRunRateInnings(innings: Pick<InningsSummary, "runs" | "wickets" | "balls">): { runs: number; overs: number } {
   const allOut = innings.wickets >= WICKETS;
   return {
     runs: innings.runs,
@@ -85,7 +91,7 @@ export function netRunRateInnings(innings: InningsResult): { runs: number; overs
 }
 
 /** A one-line scoreline, e.g. "182/6 (20.0)". */
-export function scoreline(innings: InningsResult): string {
+export function scoreline(innings: Pick<InningsSummary, "runs" | "wickets" | "balls">): string {
   const wickets = innings.wickets >= WICKETS ? `${innings.runs}` : `${innings.runs}/${innings.wickets}`;
   return `${wickets}${innings.wickets >= WICKETS ? " all out" : ""} (${oversOf(innings.balls)})`;
 }

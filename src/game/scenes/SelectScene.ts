@@ -1,19 +1,23 @@
 import Phaser from "phaser";
 
 import { CANVAS } from "../config";
-import { FRANCHISES } from "../../data/franchises";
+import { FRANCHISES, LEAGUE } from "../../data/franchises";
 import type { Franchise } from "../../data/franchises";
 import type { Batter, Bowler } from "../../sim/player";
+import { createSeason, nextFixture, standings } from "../../sim/tournament";
+import { clearSeason, loadSeason, saveSeason } from "../season/store";
 
 /**
- * Pick your side, and theirs.
+ * Pick your side, and theirs -- or your side, and a season.
  *
- * Ten cards. The first click is the side you bat for, the second is the side
- * you face; click a chosen card again to unpick it. Both elevens are laid out
- * below with their ratings as bars, because the attributes are the whole
- * point of the squads -- you should be able to see that Hyderabad's quicks
- * will get you out and Bengaluru's will not before you choose to face them.
+ * Two modes. Quick match: the first click is the side you bat for, the second
+ * the side you face, and both elevens are laid out below with their ratings
+ * as bars, because the attributes are the whole point of the squads. Season:
+ * one click picks the franchise you carry through a round robin and the
+ * playoffs; if a season is already saved, it can be continued instead.
  */
+
+type Mode = "quick" | "season";
 
 const FONT = "system-ui, -apple-system, Segoe UI, sans-serif";
 
@@ -23,14 +27,25 @@ const CARD_GAP = 14;
 const GRID_TOP = 92;
 
 export class SelectScene extends Phaser.Scene {
+  private mode: Mode = "quick";
   private batting?: Franchise;
   private bowling?: Franchise;
   private cards = new Map<string, { frame: Phaser.GameObjects.Rectangle; tag: Phaser.GameObjects.Text }>();
   private panels!: Phaser.GameObjects.Container;
   private playButton!: Phaser.GameObjects.Container;
+  private hintText!: Phaser.GameObjects.Text;
+  private modeButtons: { mode: Mode; frame: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
 
   constructor() {
     super("select");
+  }
+
+  init(): void {
+    this.batting = undefined;
+    this.bowling = undefined;
+    this.cards = new Map();
+    this.modeButtons = [];
+    if (loadSeason()) this.mode = "season";
   }
 
   create(): void {
@@ -40,15 +55,30 @@ export class SelectScene extends Phaser.Scene {
     this.add.text(40, 22, "POWERPLAY", {
       fontFamily: FONT, fontSize: "34px", color: "#ffffff", fontStyle: "bold", letterSpacing: 4,
     });
-    this.add.text(CANVAS.width - 40, 34, "Pick the side you bat for, then the side you face.", {
+    this.hintText = this.add.text(CANVAS.width - 40, 34, "", {
       fontFamily: FONT, fontSize: "14px", color: "#94a3b8",
     }).setOrigin(1, 0.5);
+
+    this.modeButton("quick", "QUICK MATCH", 250);
+    this.modeButton("season", "SEASON", 410);
 
     FRANCHISES.forEach((franchise, i) => this.card(franchise, i));
 
     this.panels = this.add.container(0, 0);
     this.playButton = this.button();
     this.refresh();
+  }
+
+  private modeButton(mode: Mode, label: string, x: number): void {
+    const frame = this.add.rectangle(x, 20, 140, 32, 0x1e293b).setOrigin(0).setInteractive({ useHandCursor: true });
+    const text = this.add.text(x + 70, 36, label, { fontFamily: FONT, fontSize: "12px", color: "#e2e8f0", fontStyle: "bold" }).setOrigin(0.5);
+    frame.on("pointerdown", () => {
+      this.mode = mode;
+      this.batting = undefined;
+      this.bowling = undefined;
+      this.refresh();
+    });
+    this.modeButtons.push({ mode, frame, label: text });
   }
 
   private card(franchise: Franchise, index: number): void {
@@ -91,6 +121,12 @@ export class SelectScene extends Phaser.Scene {
   }
 
   private pick(f: Franchise): void {
+    if (this.mode === "season") {
+      this.batting = this.batting?.id === f.id ? undefined : f;
+      this.bowling = undefined;
+      this.refresh();
+      return;
+    }
     if (this.batting?.id === f.id) {
       this.batting = this.bowling;
       this.bowling = undefined;
@@ -107,25 +143,73 @@ export class SelectScene extends Phaser.Scene {
   }
 
   private refresh(): void {
+    for (const { mode, frame, label } of this.modeButtons) {
+      const on = mode === this.mode;
+      frame.setFillStyle(on ? 0xfbbf24 : 0x1e293b);
+      label.setColor(on ? "#08111f" : "#e2e8f0");
+    }
+    this.hintText.setText(this.mode === "quick"
+      ? "Pick the side you bat for, then the side you face."
+      : "Pick the franchise you will carry through the season.");
+
     for (const franchise of FRANCHISES) {
       const { frame, tag } = this.cards.get(franchise.id)!;
       const you = this.batting?.id === franchise.id;
       const them = this.bowling?.id === franchise.id;
       frame.setStrokeStyle(2, you ? 0xfbbf24 : them ? 0x38bdf8 : 0x1e293b);
       frame.setFillStyle(you || them ? 0x162544 : 0x0f1b33);
-      tag.setVisible(you || them).setText(you ? "YOU BAT" : "YOU FACE")
+      tag.setVisible(you || them).setText(you ? (this.mode === "season" ? "YOUR SIDE" : "YOU BAT") : "YOU FACE")
         .setBackgroundColor(you ? "#fbbf24" : "#38bdf8");
     }
 
     this.panels.removeAll(true);
     const top = GRID_TOP + 2 * (CARD_H + CARD_GAP) + 14;
-    if (this.batting) this.squadPanel(this.batting, 40, top, "Your batting order", true);
-    else this.hint(40, top, "Click a card to choose the side you bat for.");
-    if (this.bowling) this.squadPanel(this.bowling, CANVAS.width / 2 + 20, top, "Their attack", false);
-    else if (this.batting) this.hint(CANVAS.width / 2 + 20, top, "Now click the side you want to face.");
+    if (this.mode === "season") {
+      this.seasonPanel(top);
+    } else {
+      if (this.batting) this.squadPanel(this.batting, 40, top, "Your batting order", true);
+      else this.hint(40, top, "Click a card to choose the side you bat for.");
+      if (this.bowling) this.squadPanel(this.bowling, CANVAS.width / 2 + 20, top, "Their attack", false);
+      else if (this.batting) this.hint(CANVAS.width / 2 + 20, top, "Now click the side you want to face.");
+    }
 
-    const ready = Boolean(this.batting && this.bowling);
+    const ready = this.mode === "quick" ? Boolean(this.batting && this.bowling) : Boolean(this.batting);
     this.playButton.setVisible(ready);
+    this.playLabel.setText(this.mode === "quick" ? "PLAY  ▶" : "START SEASON  ▶");
+  }
+
+  /** The saved season, if any, with a way back into it; and the eleven you would carry. */
+  private seasonPanel(top: number): void {
+    const saved = loadSeason();
+    const x = 40;
+    const width = CANVAS.width / 2 - 60;
+    if (saved) {
+      const you = FRANCHISES.find((f) => f.id === saved.you)!;
+      const table = standings(saved);
+      const place = table.findIndex((s) => s.squad === saved.you) + 1;
+      const next = nextFixture(saved);
+      const c = this.panels;
+      c.add(this.add.rectangle(x, top, width, 150, 0x0c1730).setOrigin(0).setStrokeStyle(1, 0x1e293b));
+      c.add(this.add.rectangle(x, top, 6, 150, you.colours.primary).setOrigin(0));
+      c.add(this.add.text(x + 18, top + 12, "SEASON IN PROGRESS", { fontFamily: FONT, fontSize: "11px", color: "#64748b", fontStyle: "bold", letterSpacing: 2 }));
+      c.add(this.add.text(x + 18, top + 34, `${you.name}  ·  ${place}${place === 1 ? "st" : place === 2 ? "nd" : place === 3 ? "rd" : "th"} after ${table[place - 1].played} games`, {
+        fontFamily: FONT, fontSize: "16px", color: "#ffffff", fontStyle: "bold",
+      }));
+      c.add(this.add.text(x + 18, top + 58, next ? (next.stage === "league" ? `Next: round ${next.round}` : `Next: ${next.stage}`) : "Season complete", {
+        fontFamily: FONT, fontSize: "13px", color: "#94a3b8",
+      }));
+      const go = this.add.rectangle(x + 18, top + 96, 190, 38, 0xfbbf24).setOrigin(0).setInteractive({ useHandCursor: true });
+      const goLabel = this.add.text(x + 18 + 95, top + 115, "CONTINUE  ▶", { fontFamily: FONT, fontSize: "14px", color: "#08111f", fontStyle: "bold" }).setOrigin(0.5);
+      go.on("pointerdown", () => this.scene.start("season"));
+      const drop = this.add.rectangle(x + 222, top + 96, 150, 38, 0x1e293b).setOrigin(0).setInteractive({ useHandCursor: true });
+      const dropLabel = this.add.text(x + 222 + 75, top + 115, "ABANDON", { fontFamily: FONT, fontSize: "13px", color: "#fca5a5", fontStyle: "bold" }).setOrigin(0.5);
+      drop.on("pointerdown", () => { clearSeason(); this.refresh(); });
+      c.add([go, goLabel, drop, dropLabel]);
+      if (this.batting) this.hint(x, top + 160, `Starting a new season as ${this.batting.name} replaces the saved one.`);
+    } else if (!this.batting) {
+      this.hint(x, top, "Nine league games, then the playoffs if you make the top four. Pick a side.");
+    }
+    if (this.batting) this.squadPanel(this.batting, CANVAS.width / 2 + 20, top, "Your squad", true);
   }
 
   private hint(x: number, y: number, text: string): void {
@@ -202,11 +286,17 @@ export class SelectScene extends Phaser.Scene {
     frame.on("pointerover", () => frame.setFillStyle(0xfcd34d));
     frame.on("pointerout", () => frame.setFillStyle(0xfbbf24));
     frame.on("pointerdown", () => {
-      if (this.batting && this.bowling) {
+      if (this.mode === "quick" && this.batting && this.bowling) {
         this.scene.start("match", { bat: this.batting.id, bowl: this.bowling.id });
+      } else if (this.mode === "season" && this.batting) {
+        const season = createSeason(LEAGUE.map((s) => s.id), this.batting.id, `season-${Date.now()}`);
+        saveSeason(season);
+        this.scene.start("season");
       }
     });
+    this.playLabel = label;
     c.add([frame, label]);
     return c;
   }
+  private playLabel!: Phaser.GameObjects.Text;
 }

@@ -35,10 +35,10 @@ export class Radar {
     this.cy = cy;
     this.k = radiusPx / BOUNDARY_M;
 
-    this.ground = scene.add.graphics().setScrollFactor(0).setDepth(30);
-    this.wheel = scene.add.graphics().setScrollFactor(0).setDepth(31);
-    this.men = scene.add.graphics().setScrollFactor(0).setDepth(32);
-    this.ball = scene.add.circle(cx, cy, 3, 0xffffff).setScrollFactor(0).setDepth(33).setVisible(false);
+    this.ground = scene.add.graphics().setScrollFactor(0).setDepth(1030);
+    this.wheel = scene.add.graphics().setScrollFactor(0).setDepth(1031);
+    this.men = scene.add.graphics().setScrollFactor(0).setDepth(1032);
+    this.ball = scene.add.circle(cx, cy, 3, 0xffffff).setScrollFactor(0).setDepth(1033).setVisible(false);
 
     this.drawGround(radiusPx);
   }

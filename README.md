@@ -8,10 +8,11 @@ which nails the swing and deliberately has nothing behind it — no opponent, no
 consequence, every ball identical to the last. This keeps the bat and adds the
 part that makes you keep playing.
 
-**Status: M1 and M2 done, M3 half done.** The batting works, the simulation
-resolves a full T20 headlessly, the field is a real nine-man plan with a leg
-side and an off side drawn through a perspective camera, and you pick one of
-ten fictional franchises to bat for and another to face. The tournament is not built yet — see the milestones
+**Status: M1, M2 and M4 done, M3 nearly.** Pick one of ten fictional
+franchises and carry it through a season: nine league games, a points table
+with net run rate, the playoff bracket, a champion. You bat every innings of
+yours with a drag-to-swing bat on a nine-man field drawn through a perspective
+camera; the model bats theirs and chases your totals. Or play a quick match. The tournament is not built yet — see the milestones
 below, and `HANDOFF.md` for the state in detail.
 
 Swing timing is the whole game: mistime it and the bat has already stopped, so
@@ -20,11 +21,11 @@ you dribble it 8m. Time it and you clear the rope.
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # 127 tests, no browser
+npm test        # 145 tests, no browser
 ```
 
-Pick your side and theirs, then click to face a delivery, move the mouse to
-swing, arrow keys to pick a foot. Esc goes back to the teams.
+Quick match or season. Click to face a delivery, move the mouse to swing,
+arrow keys to pick a foot. Esc leaves a match.
 
 ## The architecture, in one rule
 
@@ -101,9 +102,9 @@ deliberate:
 - [ ] **M3 — the two halves meet.** Squad data ✓; you bat against a real attack
       whose attributes change the delivery ✓; a human's shot flows back through
       the model — not yet.
-- [ ] **M4 — the tournament.** Ten fictional franchises, round robin, IPL playoff
-      bracket, points table with net run rate.
-- [ ] **M5 — persistence and polish.**
+- [x] **M4 — the tournament.** Ten fictional franchises, round robin, IPL playoff
+      bracket, points table with net run rate, saved between sessions.
+- [ ] **M5 — polish.** Sound, touch, a crowd that reacts, deploy.
 
 Teams and players are fictional throughout. Real IPL franchise names and player
 likenesses are licensed, and this is meant to be publishable.
@@ -118,8 +119,10 @@ likenesses are licensed, and this is meant to be publishable.
 | `src/game/physics/direction.ts` | Pure. The second axis: bearing, plan, projection |
 | `src/game/physics/field.ts` | Pure. Nine-man fields, reach, rolling, and the judge |
 | `src/game/view/camera.ts` | Pure. The perspective camera the ground is drawn through |
+| `src/sim/tournament.ts` | Pure. Fixtures, the table, the bracket |
 | `src/data/franchises.ts` | The ten franchises and their elevens |
-| `src/game/scenes/SelectScene.ts` | Pick the sides, see both elevens |
+| `src/game/scenes/SelectScene.ts` | Quick match or season; pick the sides |
+| `src/game/scenes/SeasonScene.ts` | The table and the fixture in hand |
 | `src/game/scenes/MatchScene.ts` | Rendering and the ball's lifecycle |
 | `tests/headless.ts` | The real Matter world, played in Node |
 | `tests/` | Vitest, no browser |

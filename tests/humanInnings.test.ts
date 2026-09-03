@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HumanInnings } from "../src/game/humanInnings";
 import { BALLS_PER_OVER, OVERS, WICKETS } from "../src/sim/innings";
 import type { Outcome } from "../src/sim/types";
+import { franchiseById } from "../src/data/franchises";
 
 const dot: Outcome = { runs: 0, description: "" };
 const six: Outcome = { runs: 6, description: "" };
@@ -72,5 +73,57 @@ describe("the human innings", () => {
     expect(innings.thisOver.map((b) => b.label)).toEqual(["•", "1", "6", "wd", "W"]);
     expect(innings.thisOver.map((b) => b.kind))
       .toEqual(["dot", "runs", "boundary", "extra", "wicket"]);
+  });
+});
+
+describe("the human innings with a batting order and a target", () => {
+  const squad = franchiseById("mum").squad;
+
+  it("opens with the first two, rotates on odd runs, and swaps at the over", () => {
+    const innings = new HumanInnings(squad);
+    expect(innings.atTheCrease.map((l) => l.batter.name)).toEqual(["Arjun Malhotra", "Devansh Pillai"]);
+    innings.record(one);
+    expect(innings.atTheCrease[0].batter.name).toBe("Devansh Pillai");
+    innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot);
+    // Six legal balls: the ends change, so the man who took the single is back on strike.
+    expect(innings.atTheCrease[0].batter.name).toBe("Arjun Malhotra");
+  });
+
+  it("sends the next man in when one is out, and scores each line", () => {
+    const innings = new HumanInnings(squad);
+    innings.record(six);
+    innings.record(out);
+    expect(innings.atTheCrease[0].batter.name).toBe("Callum Whitlock");
+    const malhotra = innings.battingLines.find((l) => l.batter.name === "Arjun Malhotra")!;
+    expect(malhotra.runs).toBe(6);
+    expect(malhotra.balls).toBe(2);
+    expect(malhotra.sixes).toBe(1);
+    expect(malhotra.dismissal).toBe("bowled");
+  });
+
+  it("ends the moment a target is reached, and says what was required until then", () => {
+    const innings = new HumanInnings(squad, 13);
+    feed(innings, six, 2);
+    expect(innings.complete).toBe(false);
+    expect(innings.required).toEqual({ runs: 1, balls: 118 });
+    expect(innings.requiredRate).toBeCloseTo(6 / 118, 5);
+    innings.record(one);
+    expect(innings.complete).toBe(true);
+    expect(innings.won).toBe(true);
+    expect(innings.closedBecause).toBe("Target reached");
+    expect(innings.summary.won).toBe(true);
+  });
+
+  it("loses a chase that runs out of balls or wickets", () => {
+    const short = feed(new HumanInnings(squad, 200), one, OVERS * BALLS_PER_OVER);
+    expect(short.complete).toBe(true);
+    expect(short.won).toBe(false);
+    const collapsed = feed(new HumanInnings(squad, 200), out, WICKETS);
+    expect(collapsed.won).toBe(false);
+    expect(collapsed.summary.wickets).toBe(WICKETS);
+  });
+
+  it("has no summary without a squad", () => {
+    expect(() => new HumanInnings().summary).toThrow(/squad/);
   });
 });

@@ -56,17 +56,26 @@ export interface BallEvent {
   wickets: number;
 }
 
-export interface InningsResult {
+/**
+ * As much of an innings as a result or a table needs. The simulation's
+ * `InningsResult` is one of these with the scorecard attached; the innings
+ * you bat with a bat in your hand produces one too, and `resultOf` in match.ts
+ * cannot tell them apart. That is the seam again, one level up.
+ */
+export interface InningsSummary {
   squad: Squad;
   runs: number;
   wickets: number;
   /** Legal balls bowled. */
   balls: number;
+  /** Set when the innings ended by reaching a target rather than running out. */
+  won?: boolean;
+}
+
+export interface InningsResult extends InningsSummary {
   batting: BattingLine[];
   bowling: BowlingLine[];
   log: BallEvent[];
-  /** Set when the innings ended by reaching a target rather than running out. */
-  won?: boolean;
 }
 
 export interface InningsOptions {

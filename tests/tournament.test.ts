@@ -1,0 +1,186 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  champion, createSeason, involvesYou, isOver, leagueComplete, nextFixture, playedFrom, playoffs,
+  playoffWinner, recordResult, simulateFixture, standings,
+} from "../src/sim/tournament";
+import type { Played, Season } from "../src/sim/tournament";
+import { LEAGUE, franchiseById } from "../src/data/franchises";
+import { makeRng } from "../src/sim/rng";
+import { OVERS, BALLS_PER_OVER, WICKETS } from "../src/sim/innings";
+
+/**
+ * The season is bookkeeping, and bookkeeping is where a tournament quietly
+ * stops meaning anything: a side that plays ten games in a nine-round league,
+ * a tie worth nothing, a bracket that seeds the wrong pair. These are the
+ * checks that would notice.
+ */
+
+const IDS = LEAGUE.map((s) => s.id);
+const squadById = (id: string) => franchiseById(id).squad;
+
+const fresh = () => createSeason(IDS, "mum", "season-test");
+
+/** Play every fixture headlessly, in order, until the season is over. */
+function playOut(season: Season, seed = "playout"): Season {
+  const rng = makeRng(seed);
+  let s = season;
+  for (let guard = 0; guard < 60; guard++) {
+    const fixture = nextFixture(s);
+    if (!fixture) break;
+    s = recordResult(s, simulateFixture(fixture, squadById, rng));
+  }
+  return s;
+}
+
+const line = (squad: string, runs: number, wickets = 5, balls = OVERS * BALLS_PER_OVER) => ({ squad, runs, wickets, balls });
+
+describe("the fixture list", () => {
+  const season = fresh();
+
+  it("is a single round robin: 45 matches, nine each", () => {
+    expect(season.league).toHaveLength(45);
+    for (const id of IDS) {
+      const games = season.league.filter((f) => f.home === id || f.away === id);
+      expect(games).toHaveLength(9);
+      const opponents = new Set(games.map((f) => (f.home === id ? f.away : f.home)));
+      expect(opponents.size).toBe(9);
+    }
+  });
+
+  it("puts every side on the park once a round", () => {
+    for (let round = 1; round <= 9; round++) {
+      const games = season.league.filter((f) => f.round === round);
+      expect(games).toHaveLength(5);
+      const sides = games.flatMap((f) => [f.home, f.away]);
+      expect(new Set(sides).size).toBe(10);
+    }
+  });
+
+  it("gives everyone some home games", () => {
+    for (const id of IDS) {
+      expect(season.league.filter((f) => f.home === id).length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("refuses an odd league and an outsider", () => {
+    expect(() => createSeason(IDS.slice(0, 9), "mum", "x")).toThrow(/even/);
+    expect(() => createSeason(IDS, "csk", "x")).toThrow(/not in the season/);
+  });
+
+  it("knows which fixtures are yours", () => {
+    const mine = season.league.filter((f) => involvesYou(season, f));
+    expect(mine).toHaveLength(9);
+    expect(nextFixture(season)?.round).toBe(1);
+  });
+});
+
+describe("the table", () => {
+  it("awards two for a win, one each for a tie, and sorts by points then net run rate", () => {
+    let season = fresh();
+    const [m1, m2] = season.league.filter((f) => f.round === 1);
+    // m1: home wins by 40 in a full innings each way.
+    season = recordResult(season, {
+      fixtureId: m1.id, first: line(m1.home, 180), second: line(m1.away, 140), winner: m1.home, summary: "",
+    });
+    // m2: a tie.
+    season = recordResult(season, {
+      fixtureId: m2.id, first: line(m2.home, 150), second: line(m2.away, 150), winner: null, summary: "",
+    });
+
+    const table = standings(season);
+    const row = (id: string) => table.find((r) => r.squad === id)!;
+    expect(row(m1.home).points).toBe(2);
+    expect(row(m1.away).points).toBe(0);
+    expect(row(m2.home).points).toBe(1);
+    expect(row(m2.away).points).toBe(1);
+    expect(row(m1.home).nrr).toBeCloseTo(2);
+    expect(row(m1.away).nrr).toBeCloseTo(-2);
+    expect(table[0].squad).toBe(m1.home);
+    expect(table[table.length - 1].squad).toBe(m1.away);
+  });
+
+  it("charges a side bowled out the full twenty overs", () => {
+    let season = fresh();
+    const m = season.league[0];
+    // Home 160 in 20; away all out for 80 in 10 overs. Their rate is 80/20, not 80/10.
+    season = recordResult(season, {
+      fixtureId: m.id, first: line(m.home, 160), second: line(m.away, 80, WICKETS, 60), winner: m.home, summary: "",
+    });
+    const away = standings(season).find((r) => r.squad === m.away)!;
+    expect(away.nrr).toBeCloseTo(80 / 20 - 160 / 20);
+  });
+
+  it("refuses to record the same fixture twice", () => {
+    let season = fresh();
+    const m = season.league[0];
+    const played: Played = { fixtureId: m.id, first: line(m.home, 1), second: line(m.away, 2), winner: m.away, summary: "" };
+    season = recordResult(season, played);
+    expect(() => recordResult(season, played)).toThrow(/already/);
+  });
+});
+
+describe("the playoffs", () => {
+  it("do not exist until the league is done, then seed 1v2 and 3v4", () => {
+    let season = fresh();
+    expect(playoffs(season)).toHaveLength(0);
+    const rng = makeRng("league-only");
+    for (const f of season.league) season = recordResult(season, simulateFixture(f, squadById, rng));
+    expect(leagueComplete(season)).toBe(true);
+
+    const table = standings(season).map((s) => s.squad);
+    const [q1, elim] = playoffs(season);
+    expect(q1.stage).toBe("qualifier1");
+    expect([q1.home, q1.away]).toEqual([table[0], table[1]]);
+    expect(elim.stage).toBe("eliminator");
+    expect([elim.home, elim.away]).toEqual([table[2], table[3]]);
+    expect(nextFixture(season)?.id).toBe("qualifier1");
+  });
+
+  it("run the bracket to a champion: Q1 winner meets the Q2 winner", () => {
+    const season = playOut(fresh());
+    expect(isOver(season)).toBe(true);
+    const final = playoffs(season).find((f) => f.stage === "final")!;
+    const q1 = playoffs(season).find((f) => f.stage === "qualifier1")!;
+    const q1Played = season.results.find((r) => r.fixtureId === "qualifier1")!;
+    expect([final.home, final.away]).toContain(playoffWinner(season, q1, q1Played));
+    expect([final.home, final.away]).toContain(champion(season));
+    expect(nextFixture(season)).toBeNull();
+    // Four playoff matches and not one more.
+    expect(season.results).toHaveLength(45 + 4);
+  });
+
+  it("send the higher-placed side through a tied playoff", () => {
+    let season = fresh();
+    const rng = makeRng("tied-q1");
+    for (const f of season.league) season = recordResult(season, simulateFixture(f, squadById, rng));
+    const [q1] = playoffs(season);
+    const tied: Played = { fixtureId: q1.id, first: line(q1.home, 150), second: line(q1.away, 150), winner: null, summary: "" };
+    expect(playoffWinner(season, q1, tied)).toBe(q1.home);
+  });
+});
+
+describe("a result from summaries", () => {
+  it("reads the same whether you batted or the model did", () => {
+    const season = fresh();
+    const f = season.league[0];
+    const home = squadById(f.home);
+    const away = squadById(f.away);
+    const played = playedFrom(
+      f,
+      { squad: home, runs: 170, wickets: 6, balls: 120 },
+      { squad: away, runs: 171, wickets: 4, balls: 115, won: true },
+    );
+    expect(played.winner).toBe(away.id);
+    expect(played.summary).toMatch(/won by 6 wickets/);
+  });
+});
+
+describe("a whole season", () => {
+  it("replays identically from its seed", () => {
+    const a = playOut(fresh(), "replay");
+    const b = playOut(fresh(), "replay");
+    expect(a.results.map((r) => r.summary)).toEqual(b.results.map((r) => r.summary));
+    expect(champion(a)).toBe(champion(b));
+  });
+});
