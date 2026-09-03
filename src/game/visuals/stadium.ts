@@ -26,8 +26,8 @@ import type { Kit } from "./figures";
 
 const SKY_TOP = 0x081330;
 const SKY_HORIZON = 0x2f3d6b;
-const GRASS_DARK = 0x1f6a34;
-const GRASS_LIGHT = 0x2a7f42;
+const GRASS_EDGE = 0x175a2c;
+const GRASS_LIGHT = 0x2c8646;
 const APRON = 0x2b5a2c;
 const PITCH = 0xc9b283;
 const PITCH_WORN = 0xb89e6c;
@@ -60,21 +60,6 @@ function circlePoints(camera: Camera, radiusM: number, step = 3): Pt[] {
     if (p) points.push(pt(p.sx, p.sy));
   }
   return points;
-}
-
-/** The part of a disc between two across-lines, as a projected polygon. */
-function bandPoints(camera: Camera, radiusM: number, z0: number, z1: number, steps = 6): Pt[] {
-  const front: Pt[] = [];
-  const back: Pt[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const z = z0 + ((z1 - z0) * i) / steps;
-    const half = Math.sqrt(Math.max(0, radiusM * radiusM - z * z));
-    const a = camera.ground(half, z);
-    const b = camera.ground(-half, z);
-    if (a) front.push(pt(a.sx, a.sy));
-    if (b) back.push(pt(b.sx, b.sy));
-  }
-  return [...front, ...back.reverse()];
 }
 
 /** A point on the stand's inner face at a bearing and a height. */
@@ -110,6 +95,7 @@ export function drawStadium(scene: Phaser.Scene, camera: Camera, home: Kit, view
     drawStands(g, camera, home, { width, height });
     drawFloodlights(g, camera);
     drawTurf(g, camera);
+    drawLightPools(g, camera, { width, height });
     drawPitch(g, camera);
     g.generateTexture(key, width, height);
     g.destroy();
@@ -271,27 +257,168 @@ function drawFloodlights(g: Phaser.GameObjects.Graphics, camera: Camera): void {
         );
       }
     }
-    g.fillStyle(0xfff6d0, 0.05).fillCircle(top.sx, top.sy - headH / 2, 140 * top.scale);
-    g.fillStyle(0xfff6d0, 0.04).fillCircle(top.sx, top.sy - headH / 2, 80 * top.scale);
+    // Bloom: a warm halo in a stack of discs, dense at the head and gone by
+    // the rim, and a streak of glare below the lamps.
+    const cx = top.sx;
+    const cy = top.sy - headH / 2;
+    const halo = 260 * top.scale;
+    for (let i = 0; i < 7; i++) {
+      const t = 1 - i / 7;
+      g.fillStyle(i < 4 ? 0xfff1c9 : 0xffe6a8, 0.028 + i * 0.012).fillCircle(cx, cy, halo * t);
+    }
+    g.fillStyle(0xfff8e6, 0.35).fillEllipse(cx, cy + headH * 0.1, headW * 0.9, headH * 0.6);
+    g.fillStyle(0xfff8e6, 0.12).fillEllipse(cx, cy + headH * 0.9, headW * 1.5, headH * 1.4);
   }
+}
+
+/**
+ * What the floodlights do to the ground and the air: a warm pool of light
+ * on the grass under each tower, brightest where the four beams cross in
+ * the middle, and a faint haze over the far side of the ground where the
+ * beams pass through the night.
+ */
+function drawLightPools(g: Phaser.GameObjects.Graphics, camera: Camera, view: Viewport): void {
+  const pool = (alongM: number, acrossM: number, radiusM: number, alpha: number) => {
+    for (let i = 0; i < 5; i++) {
+      const t = 1 - i / 5;
+      const pts: Pt[] = [];
+      for (let deg = 0; deg <= 360; deg += 6) {
+        const p = camera.ground(alongM + radiusM * t * Math.cos(toRad(deg)), acrossM + radiusM * t * Math.sin(toRad(deg)));
+        if (p) pts.push(pt(p.sx, p.sy));
+      }
+      if (pts.length > 3) g.fillStyle(0xfff0c2, alpha * (0.35 + i * 0.16)).fillPoints(pts, true);
+    }
+  };
+  const cx = PITCH_M / 2;
+  for (const deg of [42, 138, -42, -138]) {
+    const r = BOUNDARY_M * 0.55;
+    pool(cx + r * Math.cos(toRad(deg)), r * Math.sin(toRad(deg)), 30, 0.028);
+  }
+  pool(cx, 0, 26, 0.03);
+
+  // Haze: a soft band of pale light along the far horizon, above the far
+  // stand, thinning upward into the sky.
+  const far = camera.ground(cx, BOUNDARY_M + 9);
+  if (far) {
+    const bands = 12;
+    const height = view.height * 0.22;
+    for (let i = 0; i < bands; i++) {
+      const t = i / bands;
+      g.fillStyle(0xd9e2ff, 0.035 * (1 - t)).fillRect(0, far.sy - height * (t + 1 / bands), view.width, height / bands + 1);
+    }
+  }
+}
+
+/**
+ * A wedge of the outfield between two bearings from the middle of the pitch,
+ * as a projected polygon. The stripes radiate from the square, which is how a
+ * ground is actually mown -- from the middle out -- and it makes the pitch
+ * the centre of the picture at a glance.
+ */
+function wedgePoints(camera: Camera, innerM: number, outerM: number, deg0: number, deg1: number, step = 2): Pt[] {
+  const cx = PITCH_M / 2;
+  const outer: Pt[] = [];
+  const inner: Pt[] = [];
+  for (let deg = deg0; deg <= deg1 + 1e-6; deg += step) {
+    const a = camera.ground(cx + outerM * Math.cos(toRad(deg)), outerM * Math.sin(toRad(deg)));
+    const b = camera.ground(cx + innerM * Math.cos(toRad(deg)), innerM * Math.sin(toRad(deg)));
+    if (a) outer.push(pt(a.sx, a.sy));
+    if (b) inner.push(pt(b.sx, b.sy));
+  }
+  return [...outer, ...inner.reverse()];
+}
+
+/** The disc of turf about the middle of the pitch. */
+function turfDisc(camera: Camera, radiusM: number, step = 3): Pt[] {
+  const cx = PITCH_M / 2;
+  const points: Pt[] = [];
+  for (let deg = 0; deg <= 360; deg += step) {
+    const p = camera.ground(cx + radiusM * Math.cos(toRad(deg)), radiusM * Math.sin(toRad(deg)));
+    if (p) points.push(pt(p.sx, p.sy));
+  }
+  return points;
 }
 
 function drawTurf(g: Phaser.GameObjects.Graphics, camera: Camera): void {
   g.fillStyle(APRON).fillPoints(circlePoints(camera, BOUNDARY_M + 9), true);
-  g.fillStyle(GRASS_DARK).fillPoints(circlePoints(camera, BOUNDARY_M), true);
 
-  // Mowing stripes across the ground, parallel to the pitch.
-  for (let z = -BOUNDARY_M; z < BOUNDARY_M; z += 12) {
-    const band = bandPoints(camera, BOUNDARY_M, z, Math.min(BOUNDARY_M, z + 6));
-    if (band.length > 3) g.fillStyle(GRASS_LIGHT, 0.6).fillPoints(band, true);
+  // The grass darkens toward the rope, where the floodlights reach least:
+  // a stack of discs from the edge colour in to the centre colour.
+  const edge = Phaser.Display.Color.ValueToColor(GRASS_EDGE);
+  const centre = Phaser.Display.Color.ValueToColor(GRASS_LIGHT);
+  const rings = 14;
+  for (let i = 0; i < rings; i++) {
+    const t = i / (rings - 1);
+    const r = BOUNDARY_M + 1 - (BOUNDARY_M - 14) * t;
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(edge, centre, 1, Math.pow(t, 1.4));
+    g.fillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b)).fillPoints(circlePoints(camera, r), true);
+  }
+
+  // Mowing stripes, radiating from the square: about six metres wide at the
+  // rope, starting outside the square so they do not meet in a point. The
+  // alternate wedges are lifted and dropped a touch, so the gradient beneath
+  // still reads and the stripes are grass rather than a sunburst.
+  const wedge = 5;
+  for (let deg = 0, i = 0; deg < 360; deg += wedge, i++) {
+    const band = wedgePoints(camera, 13, BOUNDARY_M + 1, deg, deg + wedge);
+    if (band.length < 3) continue;
+    if (i % 2 === 0) g.fillStyle(0xffffff, 0.042);
+    else g.fillStyle(0x000000, 0.045);
+    g.fillPoints(band, true);
   }
   // Lighter toward the middle where the floodlights concentrate.
-  g.fillStyle(0xffffff, 0.04).fillPoints(circlePoints(camera, 34), true);
+  g.fillStyle(0xfff3d6, 0.05).fillPoints(turfDisc(camera, 30), true);
+  g.fillStyle(0xfff3d6, 0.04).fillPoints(turfDisc(camera, 18), true);
 
   const ring = circlePoints(camera, RING);
   g.lineStyle(1.5, 0xf8fafc, 0.35).strokePoints(ring, true);
-  g.lineStyle(2, 0x0f2d1c, 0.35).strokePoints(circlePoints(camera, BOUNDARY_M - 0.4, 2), true);
-  g.lineStyle(4, 0xf8fafc, 0.95).strokePoints(circlePoints(camera, BOUNDARY_M, 2), true);
+  drawRope(g, camera);
+}
+
+/**
+ * The boundary: a padded rope, not a line. Cushions about a metre and a half
+ * long with a hand's gap between them, each a thick round-capped stroke with
+ * a highlight along its top and a shadow beneath on the grass. The rope is
+ * lit from above, so the far side reads a little cooler than the near.
+ */
+function drawRope(g: Phaser.GameObjects.Graphics, camera: Camera): void {
+  const cushionM = 1.5;
+  const gapM = 0.25;
+  const circumference = 2 * Math.PI * BOUNDARY_M;
+  const count = Math.floor(circumference / (cushionM + gapM));
+  const stepDeg = 360 / count;
+  const cushionDeg = stepDeg * (cushionM / (cushionM + gapM));
+
+  const segments: { pts: Pt[]; scale: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const d0 = i * stepDeg;
+    const pts: Pt[] = [];
+    let scale = 0;
+    for (let k = 0; k <= 3; k++) {
+      const deg = d0 + (cushionDeg * k) / 3;
+      const p = camera.ground(BOUNDARY_M * Math.cos(toRad(deg)), BOUNDARY_M * Math.sin(toRad(deg)));
+      if (!p) continue;
+      pts.push(pt(p.sx, p.sy));
+      scale = p.scale;
+    }
+    if (pts.length > 1) segments.push({ pts, scale });
+  }
+
+  // Shadow on the grass, then the cushion, then its top highlight.
+  for (const { pts, scale } of segments) {
+    const w = Math.max(2.5, 9 * scale);
+    g.lineStyle(w * 1.15, 0x08240f, 0.45).strokePoints(pts.map((p) => pt(p.x, p.y + w * 0.35)), false);
+  }
+  for (const { pts, scale } of segments) {
+    const w = Math.max(2.5, 9 * scale);
+    g.lineStyle(w, 0xe9edf3, 1).strokePoints(pts, false);
+    g.fillStyle(0xe9edf3, 1).fillCircle(pts[0].x, pts[0].y, w / 2).fillCircle(pts[pts.length - 1].x, pts[pts.length - 1].y, w / 2);
+  }
+  for (const { pts, scale } of segments) {
+    const w = Math.max(2.5, 9 * scale);
+    g.lineStyle(Math.max(1, w * 0.3), 0xffffff, 0.8).strokePoints(pts.map((p) => pt(p.x, p.y - w * 0.22)), false);
+    g.lineStyle(Math.max(1, w * 0.25), 0xb7c0cf, 0.6).strokePoints(pts.map((p) => pt(p.x, p.y + w * 0.3)), false);
+  }
 }
 
 function drawPitch(g: Phaser.GameObjects.Graphics, camera: Camera): void {

@@ -72,6 +72,21 @@ const lighten = (colour: number, by: number) => {
 type G = Phaser.GameObjects.Graphics;
 
 /**
+ * A soft shadow on the turf: a stack of ellipses, each a little smaller and
+ * a little denser than the last, so the edge feathers instead of cutting.
+ * Under floodlights from four towers a player's shadow is a pool beneath
+ * the feet rather than a cast shape, which is what this is. The centre
+ * reaches about `peak`; the rim is nearly nothing.
+ */
+export function softShadow(g: G, x: number, y: number, w: number, h: number, peak = 0.42): void {
+  const layers = 5;
+  for (let i = 0; i < layers; i++) {
+    const t = 1 - i / layers;
+    g.fillStyle(0x03140a, (peak / layers) * (1 + i * 0.35)).fillEllipse(x, y, w * t, h * t);
+  }
+}
+
+/**
  * A head seen from the front: face, ears, hair, eyes under brows, a nose, a
  * mouth, maybe a beard, maybe glasses. Radius ~9 world px.
  */
@@ -178,7 +193,7 @@ export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, 
   const shade = darken(kit.primary, 0.35);
   const b = look.build;
 
-  g.fillStyle(0x0b2413, 0.35).fillEllipse(0, 1, 44, 8);
+  softShadow(g, 2, 1, 58, 11);
 
   // Legs: back leg, front leg stepping toward the ball; trousers show above the pads.
   g.fillStyle(0xe8eaed);
@@ -251,7 +266,7 @@ export function drawFielder(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.G
   const trousers = darken(kit.primary, 0.5);
   const b = look.build;
 
-  g.fillStyle(0x0b2413, 0.35).fillEllipse(0, 1, 32, 7);
+  softShadow(g, 0, 1, 44, 9);
 
   // Legs, apart, knees a little bent; socks and boots.
   g.fillStyle(trousers).fillRoundedRect(-11 * b, -30, 8 * b, 30, 2.5).fillRoundedRect(3 * b, -30, 8 * b, 30, 2.5);
@@ -302,7 +317,7 @@ export function drawStumps(
   if (!base) return g;
   const s = base.scale;
   const height = STUMP_HEIGHT * s;
-  g.fillStyle(0x0b2413, 0.3).fillEllipse(base.sx, base.sy + 1, 18 * s, 4 * s);
+  softShadow(g, base.sx, base.sy + 1, 24 * s, 5 * s, 0.3);
   for (let i = -1; i <= 1; i++) {
     const x = base.sx + i * 5 * s - 1.6 * s;
     g.fillStyle(0xf5f0e1).fillRoundedRect(x, base.sy - height, 3.2 * s, height, 1.2 * s);
