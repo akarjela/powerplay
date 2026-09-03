@@ -1,14 +1,21 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-03, evening. M1, M2, track 3 and **M4** complete;
+_Last updated: 2026-09-03, night. M1, M2, track 3 and **M4** complete;
 track 2 through phase 3 of 4; M3 done bar the bridge. There is a real match
 now -- a toss, a target if you are put in, the model chasing you if you are
 not -- and a **season**: a round robin of ten, a points table with net run
 rate, the IPL bracket, a champion, saved in localStorage. The ground is a
 perspective camera's view of a stadium with a crowd of people in it, and the
 players have faces. A headless harness plays the actual Matter world in Node,
-which is how the physics was measured. Nothing is mid-edit; the tree is clean
-and every test passes._
+which is how the physics was measured. **New this session: a UI pass** -- the
+canvas is full-bleed, the HUD is a broadcast lower third in the DOM, fours,
+sixes, wickets and fifties are full-screen moments, and the crowd moves.
+Nothing is mid-edit; the tree is clean and every test passes._
+
+**Every session that touches UI starts with: "Read
+`design-system/cricketgame/MASTER.md` first."** It holds the palette, the
+type, the motion rules and the anti-patterns; `pages/match-hud.md` and
+`pages/moments.md` override it for the strip and the moments.
 
 ## Status at a glance
 
@@ -43,7 +50,18 @@ Read this first; everything below is the detail behind it.
   tiers, rails, a roof, banners, masts and a crowd of several thousand
   people, baked to one texture.
 - **A headless harness.** `tests/headless.ts` plays the real Matter world in
-  Node from the scene's own constants. 145 tests in ~2s.
+  Node from the scene's own constants. 150 tests in ~2s.
+- **The UI pass.** Full-bleed canvas (the viewport is the frame; the match
+  camera scales to cover it, anchored on the striker, capped so the straight
+  rope stays in). A DOM strip over the canvas: score, chase, the current and
+  required rates on one axis with the gap filled red or green, both batters,
+  a ball-by-ball tracker of the over, the bowler's figures, the next-ball
+  button. Full-screen moments for FOUR, SIX, WICKET, fifty and hundred, and a
+  lower third at the end of an over. Shake on a wicket, push-in on a six, a
+  tracer on a struck ball, a flash on the stands for a boundary. Soft
+  shadows, radiating mowing stripes, floodlight bloom, a padded rope, and a
+  crowd in four crossfaded frames that stands up for a boundary. All of it
+  honours `prefers-reduced-motion`.
 
 ### What is left
 
@@ -61,7 +79,10 @@ Ordered by how much a player would notice.
    skippable scorecard of the simulated innings would make it a match.
 4. **Fielders do not move on screen**, and deep point and third man are
    behind the camera. Left-handers do not exist. There is no keeper.
-5. **The crowd cannot react.** It is a texture.
+5. **The menu scenes are still Phaser text on a 1280x720 frame**, zoomed to
+   fit. They work and they fill the window, but they are not on the design
+   system; the strip and the cards are. Moving them to the DOM layer is the
+   obvious next UI step.
 6. **No sound, no touch, no deploy, no season history.** M5.
 7. **Franchise names are not trademark-cleared.** Before anything ships.
 
@@ -73,8 +94,8 @@ In order, with the reasoning in *Next steps* below:
 2. Power and technique into `contactDamping` and the hitting zone.
 3. A live scorecard for the simulated innings.
 4. Fielders who move to the ball; a keeper; left-handers.
-5. M5: a reacting crowd (a second baked texture), sound, touch, deploy,
-   season history.
+5. The team and season screens onto the design system, in the DOM.
+6. M5: sound, touch, deploy, season history.
 
 ## Goal
 
@@ -136,10 +157,10 @@ undefined on the physics path. That is phase 4, and it is the next thing.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 145 passing (`npm test`), ~2s, no browser. Includes 9 that play the real Matter world headlessly, 8 on the camera, 12 on the season |
+| Tests | 150 passing (`npm test`), ~2s, no browser. Includes 9 that play the real Matter world headlessly, 12 on the camera (4 on the viewport scaling), 12 on the season |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
-| Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season |
-| Source | ~5,300 lines across 25 files in `src/`; ~2,200 across 13 in `tests/` |
+| Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
+| Source | ~5,950 lines across 31 files in `src/` (plus ~430 of CSS); ~2,150 across 13 in `tests/` |
 | Persistence | One season, as JSON under `powerplay.season.v1` in localStorage |
 | Node | 20.20.2 locally |
 
@@ -306,6 +327,27 @@ compromises live in one file, and now every Matter body too.
   looks dead level with a shifted principal point -- see failed attempt 30
   for why it must not tilt
 
+**The broadcast layer** -- DOM, over the canvas, under `#hud`. The scene
+assembles a model each ball; nothing here knows the game.
+
+- `src/game/hud/hud.css` -- the tokens from MASTER.md as CSS variables, the
+  strip, the cards, the moments, and the reduced-motion overrides
+- `src/game/hud/scoreboard.ts` -- the strip. `render(model)`; the one
+  element that takes the pointer is the next-ball button
+- `src/game/hud/moments.ts` -- `showMoment`: FOUR, SIX, WICKET, milestone,
+  end of over. Never two at once
+- `src/game/hud/card.ts` -- the toss and result cards on a scrim
+- `src/game/hud/dom.ts` -- `hudRoot`, `el`, `reducedMotion()`
+
+**The viewport**
+
+- `src/game/view/camera.ts` also has `cameraForViewport` and
+  `viewportScale`: the design camera scaled to cover the window, anchored on
+  the striker's feet, capped so the straight rope stays on screen
+- `src/game/view/fit.ts` -- the menu scenes zoom their 1280x720 frame to fit
+- `src/game/visuals/crowd.ts` -- the crowd as four crossfaded frames;
+  `react()` on a boundary or a wicket
+
 **Scenes and visuals**
 
 - `src/game/scenes/SelectScene.ts` — two modes. Quick match: the side you
@@ -318,12 +360,15 @@ compromises live in one file, and now every Matter body too.
   bat, the model's innings before or after, a result card, the fixture
   recorded into the season if there is one. Plus everything it did before:
   bowler rotation, the field per phase, bearing at contact, the camera, the
-  radar
-- `src/game/visuals/stadium.ts` — the ground as projected shapes, baked once
-  to a texture: turf, mow bands, circle, rope, pitch, hoardings, a ring of
-  stands in bays with rails, a walkway, a roof with lights, banners, lattice
-  masts, and a crowd of several thousand small people in rows, a share of
-  them in the batting side's colours, some standing with flags
+  radar. `layout()` rebuilds everything viewport-sized on resize;
+  `renderHud()` builds the strip's model; `announce()` is the moments and
+  the game feel
+- `src/game/visuals/stadium.ts` — the ground as projected shapes, baked to
+  a texture the size of the viewport: sky, a radial-graded turf with mowing
+  stripes radiating from the square, a padded rope, pitch, hoardings, a ring
+  of stands in bays with rails, a walkway, a roof with lights, banners,
+  lattice masts with bloom, light pools and haze. `bakeCrowd` draws the
+  people alone, one frame at a time, for `crowd.ts`
 - `src/game/visuals/figures.ts` — people. Faces (front and profile), hair,
   beards, glasses, skin tones dealt from the player id via `lookFor`;
   helmets with grilles, caps, pads, gloves, kit details. Containers the
@@ -636,6 +681,26 @@ side, a collar, a trim, straps, soles, fingers -- each is two lines of code
 and the sum is a person at 90px. The features are dealt from the player id
 so they are stable; nothing here is an asset, and the repo still has none.
 
+**35. Screenshots of an automated tab, a third time -- now for CSS.** The
+Chrome extension's tab throttles `setTimeout` to one-second ticks and does
+not start CSS animations, so every moment appeared not to render and a
+300ms wait took a second. Trap #6 and #29 for the DOM. What worked: seek
+the animations by hand -- `document.getAnimations().forEach(a => { a.pause();
+a.currentTime = 300 })` -- and screenshot the paused frame. Pair with
+`await import('/src/game/hud/moments.ts')` to reach a module's exports in
+the page, since Vite serves the same instance.
+
+**36. Covering a 4:3 window by height.** Scale the design frame to cover a
+tall viewport and the off side is cropped past the straight rope: a
+straight six leaves the screen. `viewportScale` caps at the rope and
+reveals sky instead. Measured before the assertion this time: 16:10 already
+brushes the cap at 1.150 against a 1.25 cover.
+
+**37. Mowing stripes that met in a point.** Radiating wedges from the centre
+of the pitch at 9 degrees and 7% contrast read as a sunburst, not grass.
+Starting them 13m out, at 5 degrees and 4%, they are a mown outfield.
+Nothing was wrong with the idea; the contrast was.
+
 ## Next steps
 
 **Phase 4 of track 2 — the bridge, still.** A human's shot does not flow
@@ -685,6 +750,14 @@ Left-handers. A keeper.
   `NEUTRAL_AHEAD` against how people actually time it.
 - **Fielders do not move on screen.** Deep point and third man are behind
   the camera and are on the radar only.
+- **The strip is DOM and the radar is canvas.** They sit in different
+  layers. Fine until something needs to be drawn over the strip.
+- **The pointer is not tracked over the next-ball button.** Everything else
+  on the strip is `pointer-events: none`, so the swing is never intercepted;
+  the button is at the far right, away from the bat.
+- **The mouse must travel `viewportScale` times further on a bigger window**
+  for the same swing, exactly as FIT mode stretched it before. If the feel
+  drifts across monitors, this is where.
 - **A wide is only slightly visible as a wide.** 1.4m outside off, faint,
   through the bat, called at the keeper.
 - **A ball is judged the moment it is rolling**, from a predicted rest
