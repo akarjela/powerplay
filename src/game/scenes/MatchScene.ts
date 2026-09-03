@@ -17,6 +17,7 @@ import { Camera, MATCH_CAMERA, cameraForViewport, depthFor } from "../view/camer
 import type { Viewport } from "../view/camera";
 import { BallSprite, drawBatsman, drawFielder, drawStumps, lookFor, makeBat } from "../visuals/figures";
 import { drawStadium } from "../visuals/stadium";
+import { Crowd } from "../visuals/crowd";
 import { Radar } from "../visuals/radar";
 import { Scoreboard } from "../hud/scoreboard";
 import type { ScoreboardModel } from "../hud/scoreboard";
@@ -104,6 +105,9 @@ export class MatchScene extends Phaser.Scene {
   private camera: Camera = MATCH_CAMERA;
   private view: Viewport = { width: CANVAS.width, height: CANVAS.height };
   private stadium?: Phaser.GameObjects.Image;
+  private crowd?: Crowd;
+  /** Textures the last layout baked, freed when the next one replaces them. */
+  private bakedKeys: string[] = [];
   private stumps: Phaser.GameObjects.Graphics[] = [];
   private standsFlash?: Phaser.GameObjects.Rectangle;
 
@@ -206,11 +210,14 @@ export class MatchScene extends Phaser.Scene {
     this.scoreboard = new Scoreboard(() => this.onClick());
 
     this.stadium = undefined;
+    this.crowd = undefined;
+    this.bakedKeys = [];
     this.stumps = [];
     this.layout();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
+      this.crowd?.destroy();
       this.scoreboard.destroy();
       hideCard();
       clearMoment();
@@ -275,7 +282,13 @@ export class MatchScene extends Phaser.Scene {
     this.camera = cameraForViewport(this.view);
 
     this.stadium?.destroy();
+    this.crowd?.destroy();
+    const stale = this.bakedKeys;
     this.stadium = drawStadium(this, this.camera, this.sides.you.colours, this.view);
+    this.crowd = new Crowd(this, this.camera, this.sides.you.colours, this.view, -98);
+    this.bakedKeys = [this.stadium.texture.key, ...this.crowd.textureKeys];
+    // A resize bakes at the new size; the old size's textures are dead weight.
+    for (const key of stale) if (!this.bakedKeys.includes(key)) this.textures.remove(key);
     for (const g of this.stumps) g.destroy();
     this.stumps = [
       drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y),
@@ -287,7 +300,7 @@ export class MatchScene extends Phaser.Scene {
     const rope = this.camera.ground(0, -68)?.sy ?? this.view.height * 0.45;
     this.standsFlash?.destroy();
     this.standsFlash = this.add.rectangle(0, 0, this.view.width, rope, 0xfff2cc, 0)
-      .setOrigin(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(-99);
+      .setOrigin(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(-97);
 
     this.radar.setPosition(this.view.width - 96, 96);
   }
@@ -676,15 +689,18 @@ export class MatchScene extends Phaser.Scene {
     if (outcome.wicket) {
       showMoment({ kind: "wicket", how: outcome.description });
       busyUntil = 1250;
+      this.crowd?.react("wicket");
       if (!calm) this.cameras.main.shake(260, 0.009);
     } else if (outcome.runs === 6) {
       showMoment({ kind: "six" });
       busyUntil = 1150;
+      this.crowd?.react("six");
       this.boundaryFlash(0.3);
       if (!calm) this.pushIn();
     } else if (outcome.runs === 4) {
       showMoment({ kind: "four" });
       busyUntil = 900;
+      this.crowd?.react("four");
       this.boundaryFlash(0.2);
     }
 

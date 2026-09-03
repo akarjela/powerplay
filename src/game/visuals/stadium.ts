@@ -135,8 +135,7 @@ function drawSky(g: Phaser.GameObjects.Graphics, camera: Camera, view: Viewport)
  * some with a flag up.
  */
 function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, view: Viewport): void {
-  const rng = new Phaser.Math.RandomDataGenerator(["crowd"]);
-  const shirts = [...SHIRTS, home.primary, home.primary, home.secondary];
+  const rng = new Phaser.Math.RandomDataGenerator(["stands"]);
 
   // Hoardings, a metre tall just beyond the rope, in blocks of colour.
   for (let deg = 0, i = 0; deg < 360; deg += 6, i++) {
@@ -151,27 +150,14 @@ function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, v
     g.fillStyle(0xffffff, 0.75).fillPoints([lerp(a, b, 0.2), lerp(a, b, 0.8), lerp(at, bt, 0.8), lerp(at, bt, 0.2)].map((p) => pt(p.x, p.y + (at.sy - a.sy) * 0.3)), true);
   }
 
-  for (let deg = 0; deg < 360; deg += BAY_DEG) {
-    const bl = standPoint(camera, deg, 0);
-    const br = standPoint(camera, deg + BAY_DEG, 0);
-    const tl = standPoint(camera, deg, STAND_HEIGHT_PX);
-    const tr = standPoint(camera, deg + BAY_DEG, STAND_HEIGHT_PX);
-    if (!bl || !br || !tl || !tr || bl.depth < 300) continue;
-    if (![bl, br, tl, tr].some((p) => p.sx > -120 && p.sx < view.width + 120)) continue;
-
-    const quad = (t0: number, t1: number, u0 = 0, u1 = 1): Pt[] => [
-      lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t0),
-      lerp(lerpP(bl, br, u1), lerpP(tl, tr, u1), t0),
-      lerp(lerpP(bl, br, u1), lerpP(tl, tr, u1), t1),
-      lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t1),
-    ];
-
-    const bay = (deg / BAY_DEG) % 2 === 0;
+  for (const bay of visibleBays(camera, view)) {
+    const { bl, br, tl, tr, quad } = bay;
+    const even = (bay.deg / BAY_DEG) % 2 === 0;
     // Front wall, lower tier seats, walkway, upper tier seats, roof shadow, roof.
     g.fillStyle(0x2a3357).fillPoints(quad(0, 0.06), true);
-    g.fillStyle(bay ? SEAT_A : SEAT_B).fillPoints(quad(0.06, 0.44), true);
+    g.fillStyle(even ? SEAT_A : SEAT_B).fillPoints(quad(0.06, 0.44), true);
     g.fillStyle(WALKWAY).fillPoints(quad(0.44, 0.49), true);
-    g.fillStyle(bay ? SEAT_B : SEAT_A).fillPoints(quad(0.49, 0.86), true);
+    g.fillStyle(even ? SEAT_B : SEAT_A).fillPoints(quad(0.49, 0.86), true);
     g.fillStyle(ROOF_UNDER).fillPoints(quad(0.86, 0.94), true);
     g.fillStyle(ROOF).fillPoints(quad(0.94, 1.0), true);
     // Aisle down the bay edge, and a rail along the front and the walkway.
@@ -183,35 +169,6 @@ function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, v
     g.lineStyle(1, 0x1f2747, 0.5);
     for (const t of [0.14, 0.22, 0.30, 0.38, 0.57, 0.65, 0.73, 0.81]) {
       g.strokePoints([lerp(bl, tl, t), lerp(br, tr, t)], false);
-    }
-
-    // The crowd. Seat pitch ~0.85m: a bay of 7.6m holds nine across.
-    const s = bl.scale;
-    const across = 9;
-    const rows: number[] = [0.10, 0.17, 0.24, 0.31, 0.38, 0.53, 0.60, 0.67, 0.74, 0.81];
-    const homeBay = rng.frac() < 0.3;
-    for (const v of rows) {
-      for (let k = 0; k < across; k++) {
-        if (rng.frac() < 0.08) continue; // an empty seat
-        const u = 0.1 + (k + 0.5 + rng.realInRange(-0.2, 0.2)) / across * 0.88;
-        const base = lerp(lerpP(bl, br, u), lerpP(tl, tr, u), v);
-        const standing = rng.frac() < 0.12;
-        const h = (standing ? 20 : 13) * s;
-        const w = 10 * s;
-        const shirt = homeBay && rng.frac() < 0.6 ? (rng.frac() < 0.7 ? home.primary : home.secondary) : shirts[rng.between(0, shirts.length - 1)];
-        g.fillStyle(shirt, 0.95).fillRoundedRect(base.x - w / 2, base.y - h, w, h, w * 0.3);
-        const skin = SKINS[rng.between(0, SKINS.length - 1)];
-        g.fillStyle(skin).fillCircle(base.x, base.y - h - 3 * s, 3.4 * s);
-        g.fillStyle(0x1a1210, 0.9).fillEllipse(base.x, base.y - h - 4.4 * s, 6.4 * s, 3 * s);
-        if (standing && rng.frac() < 0.5) {
-          // An arm up, and sometimes a flag in it.
-          g.lineStyle(2.2 * s, skin).lineBetween(base.x + w * 0.4, base.y - h * 0.8, base.x + w * 0.9, base.y - h - 10 * s);
-          if (rng.frac() < 0.6) {
-            g.fillStyle(rng.frac() < 0.7 ? home.primary : home.secondary, 0.95)
-              .fillTriangle(base.x + w * 0.9, base.y - h - 10 * s, base.x + w * 0.9 + 12 * s, base.y - h - 7 * s, base.x + w * 0.9, base.y - h - 2 * s);
-          }
-        }
-      }
     }
     // A banner on the front rail of some bays.
     if (rng.frac() < 0.25) {
@@ -226,6 +183,115 @@ function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, v
     if (!p || p.depth < 300 || p.sx < 0 || p.sx > view.width) continue;
     g.fillStyle(0xfff6d0, 0.9).fillCircle(p.sx, p.sy, Math.max(1, 2.2 * p.scale));
   }
+}
+
+interface Bay {
+  deg: number;
+  bl: Projected;
+  br: Projected;
+  tl: Projected;
+  tr: Projected;
+  /** A quad on the bay's face between two heights (0 floor, 1 roof) and two widths. */
+  quad: (t0: number, t1: number, u0?: number, u1?: number) => Pt[];
+}
+
+/** The bays of the ring that are in front of the camera and on screen. */
+function visibleBays(camera: Camera, view: Viewport): Bay[] {
+  const bays: Bay[] = [];
+  for (let deg = 0; deg < 360; deg += BAY_DEG) {
+    const bl = standPoint(camera, deg, 0);
+    const br = standPoint(camera, deg + BAY_DEG, 0);
+    const tl = standPoint(camera, deg, STAND_HEIGHT_PX);
+    const tr = standPoint(camera, deg + BAY_DEG, STAND_HEIGHT_PX);
+    if (!bl || !br || !tl || !tr || bl.depth < 300) continue;
+    if (![bl, br, tl, tr].some((p) => p.sx > -120 && p.sx < view.width + 120)) continue;
+    const quad = (t0: number, t1: number, u0 = 0, u1 = 1): Pt[] => [
+      lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t0),
+      lerp(lerpP(bl, br, u1), lerpP(tl, tr, u1), t0),
+      lerp(lerpP(bl, br, u1), lerpP(tl, tr, u1), t1),
+      lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t1),
+    ];
+    bays.push({ deg, bl, br, tl, tr, quad });
+  }
+  return bays;
+}
+
+/** A frame of the crowd: three ways of sitting still, and on their feet. */
+export type CrowdFrame = "a" | "b" | "c" | "up";
+
+/**
+ * The crowd alone, on a transparent texture the size of the viewport, in one
+ * of four frames. Where everyone sits, what they wear and who has a flag is
+ * dealt from one seeded generator and is identical in every frame; how they
+ * are holding themselves this instant -- a shift in the seat, a lean, an arm,
+ * the angle of a flag -- comes from a second generator seeded by the frame.
+ * Crossfading two idle frames is a crowd that will not sit still; the `up`
+ * frame is most of them on their feet with their arms in the air.
+ */
+export function bakeCrowd(scene: Phaser.Scene, camera: Camera, home: Kit, view: Viewport, frame: CrowdFrame): string {
+  const width = Math.ceil(view.width);
+  const height = Math.ceil(view.height);
+  const key = `crowd-${home.primary.toString(16)}-${home.secondary.toString(16)}-${width}x${height}-${frame}`;
+  if (scene.textures.exists(key)) return key;
+
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const seat = new Phaser.Math.RandomDataGenerator(["crowd"]);
+  const pose = new Phaser.Math.RandomDataGenerator([`crowd-${frame}`]);
+  const shirts = [...SHIRTS, home.primary, home.primary, home.secondary];
+  const up = frame === "up";
+
+  for (const bay of visibleBays(camera, view)) {
+    const { bl, br, tl, tr } = bay;
+    // Seat pitch ~0.85m: a bay of 7.6m holds nine across.
+    const s = bl.scale;
+    const across = 9;
+    const rows: number[] = [0.10, 0.17, 0.24, 0.31, 0.38, 0.53, 0.60, 0.67, 0.74, 0.81];
+    const homeBay = seat.frac() < 0.3;
+    for (const v of rows) {
+      for (let k = 0; k < across; k++) {
+        if (seat.frac() < 0.08) continue; // an empty seat
+        const u = 0.1 + (k + 0.5 + seat.realInRange(-0.2, 0.2)) / across * 0.88;
+        const base = lerp(lerpP(bl, br, u), lerpP(tl, tr, u), v);
+        const stander = seat.frac() < 0.12;
+        const shirt = homeBay && seat.frac() < 0.6 ? (seat.frac() < 0.7 ? home.primary : home.secondary) : shirts[seat.between(0, shirts.length - 1)];
+        const skin = SKINS[seat.between(0, SKINS.length - 1)];
+        const hasFlag = stander && seat.frac() < 0.5 && seat.frac() < 0.6;
+        const flag = seat.frac() < 0.7 ? home.primary : home.secondary;
+
+        // This instant.
+        const standing = up ? pose.frac() < 0.85 || stander : stander;
+        const dx = pose.realInRange(-0.6, 0.6) * s + (pose.frac() < 0.06 ? pose.realInRange(-1.4, 1.4) * s : 0);
+        const dy = up ? -pose.realInRange(0, 2.5) * s : pose.realInRange(-0.4, 0.4) * s;
+        const armsUp = up ? pose.frac() < 0.8 : stander && pose.frac() < 0.5;
+        const h = (standing ? 20 : 13) * s;
+        const w = 10 * s;
+        const x = base.x + dx;
+        const y = base.y + dy;
+
+        g.fillStyle(shirt, 0.95).fillRoundedRect(x - w / 2, y - h, w, h, w * 0.3);
+        g.fillStyle(skin).fillCircle(x, y - h - 3 * s, 3.4 * s);
+        g.fillStyle(0x1a1210, 0.9).fillEllipse(x, y - h - 4.4 * s, 6.4 * s, 3 * s);
+        if (armsUp) {
+          const reach = up ? 12 * s : 10 * s;
+          const lean = pose.realInRange(-0.15, 0.15);
+          g.lineStyle(2.2 * s, skin).lineBetween(x + w * 0.4, y - h * 0.8, x + w * (0.9 + lean), y - h - reach);
+          if (up && pose.frac() < 0.7) g.lineBetween(x - w * 0.4, y - h * 0.8, x - w * (0.9 - lean), y - h - reach);
+          if (hasFlag || (up && pose.frac() < 0.08)) {
+            const wave = pose.realInRange(-3, 3) * s;
+            g.fillStyle(flag, 0.95).fillTriangle(
+              x + w * 0.9, y - h - reach,
+              x + w * 0.9 + 12 * s, y - h - reach + 3 * s + wave,
+              x + w * 0.9, y - h - reach + 8 * s,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  g.generateTexture(key, width, height);
+  g.destroy();
+  return key;
 }
 
 function drawFloodlights(g: Phaser.GameObjects.Graphics, camera: Camera): void {
