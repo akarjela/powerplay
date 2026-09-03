@@ -296,10 +296,10 @@ export function drawStumps(
   physicsX: number,
   fromPhysics: (x: number, y: number) => { x: number; y: number; z: number },
   groundY: number,
-): void {
-  const base = camera.project(fromPhysics(physicsX, groundY));
-  if (!base) return;
+): Phaser.GameObjects.Graphics {
   const g = scene.add.graphics().setDepth(500 - 0.5);
+  const base = camera.project(fromPhysics(physicsX, groundY));
+  if (!base) return g;
   const s = base.scale;
   const height = STUMP_HEIGHT * s;
   g.fillStyle(0x0b2413, 0.3).fillEllipse(base.sx, base.sy + 1, 18 * s, 4 * s);
@@ -311,6 +311,7 @@ export function drawStumps(
   g.fillStyle(0xe2b04a);
   g.fillRoundedRect(base.sx - 6.5 * s, base.sy - height - 3 * s, 5.5 * s, 2.6 * s, 1);
   g.fillRoundedRect(base.sx + 1 * s, base.sy - height - 3 * s, 5.5 * s, 2.6 * s, 1);
+  return g;
 }
 
 /** The bat: grip, splice and blade, drawn around its own centre so it rotates. */

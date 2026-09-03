@@ -4,14 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Powerplay</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/game/hud/hud.css" />
     <style>
-      html, body { margin: 0; height: 100%; background: #102214; overflow: hidden; }
-      #app { display: grid; place-items: center; height: 100%; }
-      canvas { touch-action: none; }
+      /* The canvas is full-bleed: it is the viewport. Nothing is letterboxed. */
+      html, body { margin: 0; height: 100%; background: #05070c; overflow: hidden; }
+      #app { position: fixed; inset: 0; }
+      #app canvas { display: block; touch-action: none; }
+      /* The DOM layer for the strip and the moments sits over the canvas and never takes the pointer. */
+      #hud { position: fixed; inset: 0; pointer-events: none; }
     </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="hud"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

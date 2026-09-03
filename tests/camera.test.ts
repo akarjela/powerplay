@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Camera, MATCH_CAMERA, depthFor } from "../src/game/view/camera";
+import { Camera, MATCH_CAMERA, depthFor, cameraForViewport, viewportScale } from "../src/game/view/camera";
 import { BATTER_X, BOUNDARY, CANVAS, GROUND_Y, PX_PER_METRE } from "../src/game/config";
 
 /**
@@ -74,5 +74,60 @@ describe("the match camera", () => {
   it("orders draw depth by distance across", () => {
     expect(depthFor(40)).toBeLessThan(depthFor(-20));
     expect(depthFor(10, 1)).toBeGreaterThan(depthFor(10));
+  });
+});
+
+describe("cameraForViewport", () => {
+  const feet = MATCH_CAMERA.project(Camera.fromPhysics(BATTER_X, GROUND_Y))!;
+
+  it("is the design camera on the design frame", () => {
+    const cam = cameraForViewport({ width: CANVAS.width, height: CANVAS.height });
+    const p = cam.project(Camera.fromPhysics(BATTER_X, GROUND_Y))!;
+    expect(p.sx).toBeCloseTo(feet.sx, 6);
+    expect(p.sy).toBeCloseTo(feet.sy, 6);
+    expect(viewportScale({ width: CANVAS.width, height: CANVAS.height })).toBe(1);
+  });
+
+  it("covers rather than contains, until the straight rope would leave the frame", () => {
+    expect(viewportScale({ width: 2560, height: 1080 })).toBe(2);
+    // 16:10 already brushes the cap: measured 1.150 against a 1.25 cover.
+    const wide = viewportScale({ width: 1440, height: 900 });
+    expect(wide).toBeGreaterThan(1440 / 1280);
+    expect(wide).toBeLessThan(900 / 720);
+    // 4:3 is too tall to cover by height without cropping the off side past
+    // the rope; it scales as far as the rope allows and reveals sky instead.
+    const tall = viewportScale({ width: 1024, height: 768 });
+    expect(tall).toBeGreaterThan(1024 / 1280);
+    expect(tall).toBeLessThan(768 / 720);
+  });
+
+  it("is a uniform scale of the design framing, with the striker's feet anchored", () => {
+    for (const view of [{ width: 2560, height: 1080 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+      const cam = cameraForViewport(view);
+      const s = viewportScale(view);
+      const p = cam.project(Camera.fromPhysics(BATTER_X, GROUND_Y))!;
+      // Same fraction of the frame as on the design frame.
+      expect(p.sx / view.width).toBeCloseTo(feet.sx / CANVAS.width, 6);
+      expect(p.sy / view.height).toBeCloseTo(feet.sy / CANVAS.height, 6);
+      // And every other point is s times as far from the feet.
+      const rope = Camera.fromPlan(BOUNDARY / PX_PER_METRE, 0, 0);
+      const r0 = MATCH_CAMERA.project(rope)!;
+      const r1 = cam.project(rope)!;
+      expect(r1.sx - p.sx).toBeCloseTo((r0.sx - feet.sx) * s, 6);
+      expect(r1.sy - p.sy).toBeCloseTo((r0.sy - feet.sy) * s, 6);
+      expect(r1.scale / r0.scale).toBeCloseTo(s, 6);
+    }
+  });
+
+  it("keeps the batter and the straight rope on screen on common viewports", () => {
+    for (const view of [{ width: 2560, height: 1080 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1200 }]) {
+      const cam = cameraForViewport(view);
+      const p = cam.project(Camera.fromPhysics(BATTER_X, GROUND_Y))!;
+      const rope = cam.project(Camera.fromPlan(BOUNDARY / PX_PER_METRE, 0, 0))!;
+      expect(p.sx).toBeGreaterThan(0);
+      expect(p.sy).toBeGreaterThan(0);
+      expect(p.sy).toBeLessThan(view.height);
+      expect(rope.sx).toBeLessThan(view.width);
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { BATTER_X, CAMERA, CANVAS, GROUND_Y, PX_PER_METRE } from "../config";
+import { BATTER_X, BOUNDARY, CAMERA, CANVAS, GROUND_Y, PX_PER_METRE } from "../config";
 
 /**
  * A pinhole camera over the ground.
@@ -119,8 +119,70 @@ export class Camera {
   }
 }
 
-/** The match camera, from config. One instance; it does not move. */
+/**
+ * The match camera as designed, on the 1280x720 design frame in config. One
+ * instance; it does not move. Everything measured about the framing was
+ * measured on this camera, and `cameraForViewport` is a uniform scale of it.
+ */
 export const MATCH_CAMERA = new Camera(CAMERA.position, CAMERA.lookAt, CAMERA.focal, CAMERA.principal);
+
+export interface Viewport {
+  width: number;
+  height: number;
+}
+
+/** Where the striker's feet and the straight rope fall on the design frame. */
+const DESIGN_FEET = MATCH_CAMERA.project(Camera.fromPhysics(BATTER_X, GROUND_Y))!;
+const DESIGN_ROPE = MATCH_CAMERA.project({ x: BOUNDARY, y: 0, z: 0 })!;
+/** Pixels of frame kept beyond the straight rope, so it never sits on the edge. */
+const ROPE_MARGIN = 24;
+
+/**
+ * How much the design frame is scaled to *cover* a viewport: the larger of the
+ * two ratios, so the frame overflows on one axis and is cropped rather than
+ * letterboxed. 1 on the design frame itself.
+ *
+ * Capped so the straight rope stays on screen. On a viewport much taller than
+ * 16:9 -- a 4:3 window -- covering by height would crop the off side past the
+ * boundary, and a straight six would leave the frame. Past that point the
+ * scale holds and the extra height reveals more sky and near outfield instead,
+ * which the world has anyway. Never below the width ratio, so the frame is
+ * always at least as wide as the window.
+ */
+export function viewportScale(view: Viewport): number {
+  const cover = Math.max(view.width / CANVAS.width, view.height / CANVAS.height);
+  const feetX = view.width * (DESIGN_FEET.sx / CANVAS.width);
+  const room = (view.width - ROPE_MARGIN - feetX) / (DESIGN_ROPE.sx - DESIGN_FEET.sx);
+  return Math.max(view.width / CANVAS.width, Math.min(cover, room));
+}
+
+/**
+ * The match camera for a real viewport. Full-bleed, no bars.
+ *
+ * A pinhole camera scaled by `s` about its principal point projects every
+ * point to exactly `s` times where the design camera put it, so this is the
+ * design framing enlarged to cover the window and then placed. It is placed
+ * so the striker's feet keep the same *fraction* of the width and the height
+ * they have on the design frame -- the pitch is the anchor, and the crop
+ * comes out of the sky and the far outfield rather than out of the crease. On
+ * a 16:9 viewport it is the design camera exactly. The world is a ring of
+ * stands with no edge, so whatever the viewport reveals beyond the design
+ * frame is drawn; nothing is ever black.
+ *
+ * The pointer mapping is unchanged in kind: `toPhysicsPlane` divides by the
+ * projected scale, so a bigger frame asks for a proportionally longer drag,
+ * exactly as the old FIT mode did when it stretched the canvas.
+ */
+export function cameraForViewport(view: Viewport): Camera {
+  const s = viewportScale(view);
+  const feet = DESIGN_FEET;
+  const ox = view.width * (feet.sx / CANVAS.width) - feet.sx * s;
+  const oy = view.height * (feet.sy / CANVAS.height) - feet.sy * s;
+  return new Camera(CAMERA.position, CAMERA.lookAt, CAMERA.focal * s, {
+    x: CAMERA.principal.x * s + ox,
+    y: CAMERA.principal.y * s + oy,
+  });
+}
 
 /** Draw order: further across toward the leg side is further from the camera. */
 export function depthFor(acrossM: number, layer = 0): number {

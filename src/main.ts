@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { CANVAS, GRAVITY_Y, PHYSICS_FPS } from "./game/config";
+import { GRAVITY_Y, PHYSICS_FPS } from "./game/config";
 import { MatchScene } from "./game/scenes/MatchScene";
 import { SelectScene } from "./game/scenes/SelectScene";
 import { SeasonScene } from "./game/scenes/SeasonScene";
@@ -8,9 +8,14 @@ import { SeasonScene } from "./game/scenes/SeasonScene";
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "app",
-  width: CANVAS.width,
-  height: CANVAS.height,
-  backgroundColor: "#183b1f",
+  /**
+   * Full-bleed. The canvas is the viewport, whatever shape that is; the match
+   * camera scales its focal length to *cover* the design frame (see
+   * `cameraForViewport`) and the menu scenes zoom to fit it. There are no bars.
+   */
+  width: "100%",
+  height: "100%",
+  backgroundColor: "#05070c",
   physics: {
     default: "matter",
     matter: {
@@ -22,7 +27,7 @@ const game = new Phaser.Game({
       debug: false,
     },
   },
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
   scene: [SelectScene, SeasonScene, MatchScene],
 });
 

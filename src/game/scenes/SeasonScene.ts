@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 
 import { CANVAS } from "../config";
+import { fitDesignFrame, paintGround } from "../view/fit";
 import { franchiseById } from "../../data/franchises";
 import { loadSeason, saveSeason, clearSeason } from "../season/store";
 import {
@@ -40,7 +41,8 @@ export class SeasonScene extends Phaser.Scene {
       return;
     }
     this.season = season;
-    this.add.rectangle(0, 0, CANVAS.width, CANVAS.height, 0x08111f).setOrigin(0);
+    fitDesignFrame(this);
+    paintGround(this, 0x08111f);
     this.add.rectangle(0, 0, CANVAS.width, 6, franchiseById(season.you).colours.primary).setOrigin(0);
     this.root = this.add.container(0, 0);
     this.render();

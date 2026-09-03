@@ -13,7 +13,8 @@ import {
 import type { Fielder } from "../physics/field";
 import { planPosition, shotBearing, travelledBearing } from "../physics/direction";
 import type { Bearing } from "../physics/direction";
-import { Camera, MATCH_CAMERA, depthFor } from "../view/camera";
+import { Camera, MATCH_CAMERA, cameraForViewport, depthFor } from "../view/camera";
+import type { Viewport } from "../view/camera";
 import { BallSprite, drawBatsman, drawFielder, drawStumps, lookFor, makeBat } from "../visuals/figures";
 import { drawStadium } from "../visuals/stadium";
 import { Radar } from "../visuals/radar";
@@ -96,7 +97,13 @@ type Stage = "toss" | "batting" | "result";
  * into the season table.
  */
 export class MatchScene extends Phaser.Scene {
-  private readonly camera = MATCH_CAMERA;
+  /** The camera for the current viewport; rebuilt on resize. */
+  private camera: Camera = MATCH_CAMERA;
+  private view: Viewport = { width: CANVAS.width, height: CANVAS.height };
+  private stadium?: Phaser.GameObjects.Image;
+  private stumps: Phaser.GameObjects.Graphics[] = [];
+  private hudRoot?: Phaser.GameObjects.Container;
+  private lastStatus = "";
 
   private bat!: Bat;
   private batGfx!: Phaser.GameObjects.Container;
@@ -191,18 +198,18 @@ export class MatchScene extends Phaser.Scene {
       ...GROUND_BODY,
     });
 
-    drawStadium(this, this.camera, this.sides.you.colours);
-    drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y);
-    drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y);
-    this.setField(fieldFor(this.phase));
-
     this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(this.sides.you.squad.batters[0].id))
       .setDepth(depthFor(0, 1));
     this.bat = new Bat(this, PIVOT.x, PIVOT.y);
     this.batGfx = makeBat(this).setDepth(depthFor(0, 2));
     this.ballSprite = new BallSprite(this);
 
-    this.buildHud();
+    this.stadium = undefined;
+    this.stumps = [];
+    this.hudRoot = undefined;
+    this.layout();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this));
 
     /**
      * Bounce and contact come from collision events, not from sampling. The
@@ -246,6 +253,32 @@ export class MatchScene extends Phaser.Scene {
     keyboard.on("keydown-ESC", () => this.leave());
 
     this.toss();
+  }
+
+  // -- the viewport -------------------------------------------------------------
+
+  /**
+   * Everything that depends on the size of the window: the camera, the baked
+   * ground, the stumps, the fielders and the strip. Called once from `create`
+   * and again on every resize. The batter, the bat and the ball are placed
+   * through the camera every frame and need nothing here.
+   */
+  private layout(): void {
+    this.view = { width: this.scale.width, height: this.scale.height };
+    this.camera = cameraForViewport(this.view);
+
+    this.stadium?.destroy();
+    this.stadium = drawStadium(this, this.camera, this.sides.you.colours, this.view);
+    for (const g of this.stumps) g.destroy();
+    this.stumps = [
+      drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y),
+      drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y),
+    ];
+    this.setField(this.field);
+
+    this.buildHud();
+    this.updateHud(this.lastStatus);
+    this.radar.setPosition(this.view.width - 96, 96);
   }
 
   // -- the match --------------------------------------------------------------
@@ -355,10 +388,10 @@ export class MatchScene extends Phaser.Scene {
     this.hideCard();
     const w = 720;
     const h = 120 + lines.length * 24 + 60;
-    const x = (CANVAS.width - w) / 2;
-    const y = 150;
+    const x = (this.view.width - w) / 2;
+    const y = Math.max(40, this.view.height * 0.2);
     const c = this.add.container(0, 0).setDepth(1050);
-    c.add(this.add.rectangle(0, 0, CANVAS.width, CANVAS.height, 0x000000, 0.45).setOrigin(0));
+    c.add(this.add.rectangle(0, 0, this.view.width, this.view.height, 0x000000, 0.45).setOrigin(0));
     c.add(this.add.rectangle(x, y, w, h, tint, 0.96).setOrigin(0).setStrokeStyle(2, 0x334155));
     c.add(this.add.rectangle(x, y, w, 8, this.sides.you.colours.primary).setOrigin(0));
     c.add(this.add.text(x + w / 2, y + 40, title, {
@@ -383,50 +416,49 @@ export class MatchScene extends Phaser.Scene {
   // -- the hud ----------------------------------------------------------------
 
   private buildHud(): void {
-    const height = 62;
-    const top = CANVAS.height - height;
+    const { width, height } = this.view;
+    const strip = 62;
+    const top = height - strip;
     const { you, them } = this.sides;
 
+    const firstBuild = !this.hudRoot;
+    this.hudRoot?.destroy();
+    const root = this.add.container(0, 0).setDepth(1000);
+    this.hudRoot = root;
+    const text = (x: number, y: number, style: Phaser.Types.GameObjects.Text.TextStyle) => {
+      const t = this.add.text(x, y, "", style);
+      root.add(t);
+      return t;
+    };
+
     // Everything on the strip sits above the ground and the people on it.
-    this.add.rectangle(0, top, CANVAS.width, height, 0x08111f, 0.9).setOrigin(0, 0).setDepth(1000);
-    this.add.rectangle(0, top, 6, height, you.colours.primary).setOrigin(0, 0).setDepth(1001);
-    this.add.rectangle(6, top, 3, height, you.colours.secondary).setOrigin(0, 0).setDepth(1001);
+    root.add(this.add.rectangle(0, top, width, strip, 0x08111f, 0.9).setOrigin(0, 0));
+    root.add(this.add.rectangle(0, top, 6, strip, you.colours.primary).setOrigin(0, 0));
+    root.add(this.add.rectangle(6, top, 3, strip, you.colours.secondary).setOrigin(0, 0));
 
-    this.scoreText = this.add.text(26, top + 10, "", {
-      fontFamily: FONT, fontSize: "30px", color: "#ffffff", fontStyle: "bold",
-    }).setDepth(1001);
-    this.rateText = this.add.text(26, top + 44, "", {
-      fontFamily: FONT, fontSize: "12px", color: "#7dd3fc",
-    }).setDepth(1001);
-    this.creaseText = this.add.text(330, top + 10, "", {
-      fontFamily: FONT, fontSize: "13px", color: "#e2e8f0",
-    }).setDepth(1001);
-
-    this.overMarks = this.add.text(CANVAS.width - 26, top + 12, "", {
+    this.scoreText = text(26, top + 10, { fontFamily: FONT, fontSize: "30px", color: "#ffffff", fontStyle: "bold" });
+    this.rateText = text(26, top + 44, { fontFamily: FONT, fontSize: "12px", color: "#7dd3fc" });
+    this.creaseText = text(330, top + 10, { fontFamily: FONT, fontSize: "13px", color: "#e2e8f0" });
+    this.overMarks = text(width - 26, top + 12, {
       fontFamily: "ui-monospace, Menlo, monospace", fontSize: "20px", color: "#e2e8f0",
-    }).setOrigin(1, 0).setDepth(1001);
+    }).setOrigin(1, 0);
+    this.stanceText = text(620, top + 12, { fontFamily: FONT, fontSize: "14px", color: STANCE_COLOUR[this.stance], fontStyle: "bold" })
+      .setText(STANCE_LABEL[this.stance]);
+    text(620, top + 34, { fontFamily: FONT, fontSize: "11px", color: "#64748b" }).setText("← back   → front   esc leave");
+    this.statusText = text(width - 26, top + 42, { fontFamily: FONT, fontSize: "12px", color: "#94a3b8" }).setOrigin(1, 0);
 
-    this.stanceText = this.add.text(620, top + 12, STANCE_LABEL.neutral, {
-      fontFamily: FONT, fontSize: "14px", color: STANCE_COLOUR.neutral, fontStyle: "bold",
-    }).setDepth(1001);
-    this.add.text(620, top + 34, "← back   → front   esc leave", {
-      fontFamily: FONT, fontSize: "11px", color: "#64748b",
-    }).setDepth(1001);
-
-    this.statusText = this.add.text(CANVAS.width - 26, top + 42, "", {
-      fontFamily: FONT, fontSize: "12px", color: "#94a3b8",
-    }).setOrigin(1, 0).setDepth(1001);
-
-    this.callText = this.add.text(CANVAS.width / 2, 130, "", {
-      fontFamily: FONT, fontSize: "44px", color: "#ffffff", fontStyle: "bold",
-      stroke: "#0a1428", strokeThickness: 6,
-    }).setOrigin(0.5).setDepth(1040).setAlpha(0);
-
-    this.radar = new Radar(this, CANVAS.width - 96, 96, 70);
-    this.radar.setField(this.field);
-    this.add.text(CANVAS.width - 96, 176, `${you.code} bat  ·  ${them.code} bowl`, {
+    if (firstBuild) {
+      this.callText = this.add.text(width / 2, 130, "", {
+        fontFamily: FONT, fontSize: "44px", color: "#ffffff", fontStyle: "bold",
+        stroke: "#0a1428", strokeThickness: 6,
+      }).setOrigin(0.5).setDepth(1040).setAlpha(0);
+      this.radar = new Radar(this, width - 96, 96, 70);
+      this.radar.setField(this.field);
+    }
+    this.callText.setPosition(width / 2, 130);
+    root.add(this.add.text(width - 96, 176, `${you.code} bat  ·  ${them.code} bowl`, {
       fontFamily: FONT, fontSize: "11px", color: "#cbd5e1",
-    }).setOrigin(0.5, 0).setDepth(1031);
+    }).setOrigin(0.5, 0));
   }
 
   private updateHud(status: string): void {
@@ -445,6 +477,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.overMarks.setText(innings.thisOver.map((ball) => ball.label).join(" "));
     this.statusText.setText(status);
+    this.lastStatus = status;
   }
 
   // -- the field and the attack ------------------------------------------------
@@ -457,7 +490,7 @@ export class MatchScene extends Phaser.Scene {
     field.forEach((fielder, i) => {
       const { along, across } = planPosition(fielder.distance, fielder.bearing);
       const p = this.camera.ground(along, across);
-      if (!p || p.sx < -80 || p.sx > CANVAS.width + 80 || p.sy > CANVAS.height + 80) return;
+      if (!p || p.sx < -80 || p.sx > this.view.width + 80 || p.sy > this.view.height + 80) return;
       const figure = drawFielder(this, this.sides.them.colours, lookFor(squad[i % squad.length].id))
         .setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(across));
       this.fielders.push(figure);

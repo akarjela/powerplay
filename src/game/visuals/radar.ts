@@ -22,25 +22,31 @@ import type { Outcome } from "../../sim/types";
 const BOUNDARY_M = BOUNDARY / PX_PER_METRE;
 
 export class Radar {
-  private readonly cx: number;
-  private readonly cy: number;
+  /** Drawn about its own origin; the container carries it to the corner. */
+  private readonly cx = 0;
+  private readonly cy = 0;
   private readonly k: number;
+  readonly root: Phaser.GameObjects.Container;
   private readonly ground: Phaser.GameObjects.Graphics;
   private readonly men: Phaser.GameObjects.Graphics;
   private readonly wheel: Phaser.GameObjects.Graphics;
   private readonly ball: Phaser.GameObjects.Arc;
 
   constructor(scene: Phaser.Scene, cx: number, cy: number, radiusPx: number) {
-    this.cx = cx;
-    this.cy = cy;
     this.k = radiusPx / BOUNDARY_M;
 
-    this.ground = scene.add.graphics().setScrollFactor(0).setDepth(1030);
-    this.wheel = scene.add.graphics().setScrollFactor(0).setDepth(1031);
-    this.men = scene.add.graphics().setScrollFactor(0).setDepth(1032);
-    this.ball = scene.add.circle(cx, cy, 3, 0xffffff).setScrollFactor(0).setDepth(1033).setVisible(false);
+    this.root = scene.add.container(cx, cy).setScrollFactor(0).setDepth(1030);
+    this.ground = scene.add.graphics();
+    this.wheel = scene.add.graphics();
+    this.men = scene.add.graphics();
+    this.ball = scene.add.circle(0, 0, 3, 0xffffff).setVisible(false);
+    this.root.add([this.ground, this.wheel, this.men, this.ball]);
 
     this.drawGround(radiusPx);
+  }
+
+  setPosition(cx: number, cy: number): void {
+    this.root.setPosition(cx, cy);
   }
 
   private drawGround(radiusPx: number): void {

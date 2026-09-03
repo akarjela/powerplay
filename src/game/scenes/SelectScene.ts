@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 
 import { CANVAS } from "../config";
+import { fitDesignFrame, paintGround } from "../view/fit";
 import { FRANCHISES, LEAGUE } from "../../data/franchises";
 import type { Franchise } from "../../data/franchises";
 import type { Batter, Bowler } from "../../sim/player";
@@ -49,7 +50,8 @@ export class SelectScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.add.rectangle(0, 0, CANVAS.width, CANVAS.height, 0x08111f).setOrigin(0);
+    fitDesignFrame(this);
+    paintGround(this, 0x08111f);
     this.add.rectangle(0, 0, CANVAS.width, 6, 0x38bdf8).setOrigin(0);
 
     this.add.text(40, 22, "POWERPLAY", {
@@ -59,8 +61,8 @@ export class SelectScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: "14px", color: "#94a3b8",
     }).setOrigin(1, 0.5);
 
-    this.modeButton("quick", "QUICK MATCH", 250);
-    this.modeButton("season", "SEASON", 410);
+    this.modeButton("quick", "QUICK MATCH", 290);
+    this.modeButton("season", "SEASON", 450);
 
     FRANCHISES.forEach((franchise, i) => this.card(franchise, i));
 

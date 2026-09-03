@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 
-import { BOUNDARY, CANVAS, PITCH_LENGTH, PX_PER_METRE } from "../config";
+import { BOUNDARY, CAMERA, PITCH_LENGTH, PX_PER_METRE } from "../config";
+
+const CAMERA_DESIGN_FOCAL = CAMERA.focal;
 import { RING } from "../physics/field";
-import type { Camera, Projected } from "../view/camera";
+import type { Camera, Projected, Viewport } from "../view/camera";
 import type { Kit } from "./figures";
 
 /**
@@ -93,40 +95,49 @@ const lerpP = (a: Projected, b: Projected, t: number): Projected => ({
 });
 
 /**
- * Draw the whole ground into one texture and put it on screen. `home` tints
- * the crowd; a good share of them wear the batting side's colours.
+ * Draw the whole ground into one texture the size of the viewport and put it
+ * on screen. `home` tints the crowd; a good share of them wear the batting
+ * side's colours. The texture is keyed by kit and by size, so a resize bakes
+ * a fresh one at the new resolution rather than stretching the old.
  */
-export function drawStadium(scene: Phaser.Scene, camera: Camera, home: Kit): void {
-  const key = `stadium-${home.primary.toString(16)}-${home.secondary.toString(16)}`;
+export function drawStadium(scene: Phaser.Scene, camera: Camera, home: Kit, view: Viewport): Phaser.GameObjects.Image {
+  const width = Math.ceil(view.width);
+  const height = Math.ceil(view.height);
+  const key = `stadium-${home.primary.toString(16)}-${home.secondary.toString(16)}-${width}x${height}`;
   if (!scene.textures.exists(key)) {
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    drawSky(g);
-    drawStands(g, camera, home);
+    drawSky(g, camera, { width, height });
+    drawStands(g, camera, home, { width, height });
     drawFloodlights(g, camera);
     drawTurf(g, camera);
     drawPitch(g, camera);
-    g.generateTexture(key, CANVAS.width, CANVAS.height);
+    g.generateTexture(key, width, height);
     g.destroy();
   }
-  scene.add.image(0, 0, key).setOrigin(0).setDepth(-100);
+  return scene.add.image(0, 0, key).setOrigin(0).setDepth(-100);
 }
 
-function drawSky(g: Phaser.GameObjects.Graphics): void {
+function drawSky(g: Phaser.GameObjects.Graphics, camera: Camera, view: Viewport): void {
   const bands = 40;
   const top = Phaser.Display.Color.ValueToColor(SKY_TOP);
   const mid = Phaser.Display.Color.ValueToColor(SKY_HORIZON);
   for (let i = 0; i < bands; i++) {
     const c = Phaser.Display.Color.Interpolate.ColorWithColor(top, mid, bands - 1, i);
     g.fillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b));
-    g.fillRect(0, (CANVAS.height / bands) * i, CANVAS.width, CANVAS.height / bands + 1);
+    g.fillRect(0, (view.height / bands) * i, view.width, view.height / bands + 1);
   }
-  // A scatter of stars, and a moon low over the far stand.
+  // A scatter of stars, and a moon low over the far stand -- a fixed point in
+  // the world, so it sits in the same place on the sky whatever the viewport.
   const rng = new Phaser.Math.RandomDataGenerator(["sky"]);
+  const s = camera.focal / CAMERA_DESIGN_FOCAL;
   for (let i = 0; i < 90; i++) {
-    g.fillStyle(0xffffff, rng.realInRange(0.2, 0.8)).fillCircle(rng.between(0, CANVAS.width), rng.between(0, 90), rng.realInRange(0.5, 1.3));
+    g.fillStyle(0xffffff, rng.realInRange(0.2, 0.8)).fillCircle(rng.between(0, view.width), rng.between(0, 90 * s), rng.realInRange(0.5, 1.3) * s);
   }
-  g.fillStyle(0xf5f0d8, 0.9).fillCircle(980, 46, 14);
-  g.fillStyle(SKY_TOP, 0.9).fillCircle(986, 41, 12);
+  const moon = standPoint(camera, 20, 150 * PX_PER_METRE, BOUNDARY_M + 300);
+  if (moon) {
+    g.fillStyle(0xf5f0d8, 0.9).fillCircle(moon.sx, moon.sy, 14 * s);
+    g.fillStyle(SKY_TOP, 0.9).fillCircle(moon.sx + 6 * s, moon.sy - 5 * s, 12 * s);
+  }
 }
 
 /**
@@ -137,7 +148,7 @@ function drawSky(g: Phaser.GameObjects.Graphics): void {
  * of every colour with a run of the home side's among them, some standing,
  * some with a flag up.
  */
-function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit): void {
+function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, view: Viewport): void {
   const rng = new Phaser.Math.RandomDataGenerator(["crowd"]);
   const shirts = [...SHIRTS, home.primary, home.primary, home.secondary];
 
@@ -160,7 +171,7 @@ function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit): 
     const tl = standPoint(camera, deg, STAND_HEIGHT_PX);
     const tr = standPoint(camera, deg + BAY_DEG, STAND_HEIGHT_PX);
     if (!bl || !br || !tl || !tr || bl.depth < 300) continue;
-    if (![bl, br, tl, tr].some((p) => p.sx > -120 && p.sx < CANVAS.width + 120)) continue;
+    if (![bl, br, tl, tr].some((p) => p.sx > -120 && p.sx < view.width + 120)) continue;
 
     const quad = (t0: number, t1: number, u0 = 0, u1 = 1): Pt[] => [
       lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t0),
@@ -226,7 +237,7 @@ function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit): 
   // Roof lights: a run of small lamps along the roof edge.
   for (let deg = 2.5; deg < 360; deg += BAY_DEG) {
     const p = standPoint(camera, deg, STAND_HEIGHT_PX * 0.93);
-    if (!p || p.depth < 300 || p.sx < 0 || p.sx > CANVAS.width) continue;
+    if (!p || p.depth < 300 || p.sx < 0 || p.sx > view.width) continue;
     g.fillStyle(0xfff6d0, 0.9).fillCircle(p.sx, p.sy, Math.max(1, 2.2 * p.scale));
   }
 }
