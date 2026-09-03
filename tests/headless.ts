@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   BALL_BODY, BALL_RADIUS, BAT_BODY, BAT_CATEGORY, BAT_LENGTH, BAT_WIDTH, BOWLER_X,
-  DELIVERY_SHAPE, GRAVITY_Y, GROUND_BODY, GROUND_Y, PHYSICS_FPS, PIVOT, WIDE_BALL_MASK,
+  DELIVERY_SHAPE, GRAVITY_Y, GROUND_BODY, GROUND_Y, MAX_SWING_SPEED, PHYSICS_FPS, PIVOT, WIDE_BALL_MASK,
   WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph,
 } from "../src/game/config";
 import type { Stance } from "../src/game/config";
@@ -79,6 +79,12 @@ export interface Played {
   pitchedM: number;
   /** Height when the ball first crossed the pivot, px. The hitting zone. */
   heightAtBatPx: number;
+  /**
+   * The hardest the blade swung while the ball was live, as a fraction of
+   * MAX_SWING_SPEED. What the bridge reads as commitment; measured on the
+   * frame, as the scene measures it.
+   */
+  effort: number;
   elapsedMs: number;
   /** The ball's state when the judge spoke, for debugging a ball that would not resolve. */
   final: { y: number; vx: number; vy: number };
@@ -185,6 +191,7 @@ export class Headless {
     let bearing = 0;
     let heightAtBatPx = -1;
     let struckAtMs = 0;
+    let effort = 0;
 
     // Six seconds is longer than any ball has ever taken; a ball still live
     // after that is a bug in the world, not a slow shot.
@@ -192,6 +199,7 @@ export class Headless {
       settlePivot(this.pivot, this.home, player.stance);
       const target = swingTarget(player.pointer(this.elapsedMs), this.pivot);
       Body.setAngularVelocity(this.bat, nextAngularVelocity(this.bat.angle, this.bat.angularVelocity, target));
+      if (!this.struck) effort = Math.max(effort, Math.abs(this.bat.angularVelocity) / MAX_SWING_SPEED);
 
       // The outfield, once a frame, exactly as the scene applies it.
       if (this.struck && isRolling(ball.position.y, ball.velocity.y)) {
@@ -233,14 +241,14 @@ export class Headless {
         illegal: delivery.illegal,
       });
       if (outcome) {
-        return this.finish(outcome, ball, bearing, heightAtBatPx);
+        return this.finish(outcome, ball, bearing, heightAtBatPx, effort);
       }
     }
 
-    return this.finish({ runs: 0, description: "harness timeout" }, ball, bearing, heightAtBatPx);
+    return this.finish({ runs: 0, description: "harness timeout" }, ball, bearing, heightAtBatPx, effort);
   }
 
-  private finish(outcome: Outcome, ball: MatterJS.BodyType, bearing: number, heightAtBatPx: number): Played {
+  private finish(outcome: Outcome, ball: MatterJS.BodyType, bearing: number, heightAtBatPx: number, effort: number): Played {
     const played: Played = {
       outcome,
       contact: this.contact,
@@ -249,6 +257,7 @@ export class Headless {
       landingM: this.landingM,
       pitchedM: this.pitchedM,
       heightAtBatPx,
+      effort: Math.min(1, effort),
       elapsedMs: this.elapsedMs,
       final: { y: ball.position.y, vx: ball.velocity.x, vy: ball.velocity.y },
     };

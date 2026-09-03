@@ -2,7 +2,7 @@ import Phaser from "phaser";
 
 import {
   BALL_BODY, BALL_RADIUS, BATTER_X, BOWLER_X, CANVAS, DELIVERY_SHAPE, GLOVE_LOCAL_X, GROUND_BODY,
-  GROUND_Y, PIVOT, WIDE_BALL_MASK, WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph,
+  GROUND_Y, MAX_SWING_SPEED, PIVOT, WIDE_BALL_MASK, WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph,
 } from "../config";
 import type { Stance } from "../config";
 import { Bat } from "../physics/bat";
@@ -26,6 +26,7 @@ import { hideCard, showCard } from "../hud/card";
 import { reducedMotion } from "../hud/dom";
 import type { Outcome } from "../../sim/types";
 import { countsAsBall, runsAgainstBowler } from "../../sim/types";
+import { bridge } from "../../sim/bridge";
 import { HumanInnings } from "../humanInnings";
 import { bowl, phaseOf } from "../../sim/delivery";
 import type { Delivery, Line, Phase } from "../../sim/delivery";
@@ -126,6 +127,8 @@ export class MatchScene extends Phaser.Scene {
   private bouncedAfterStrike = false;
   private landingM = 0;
   private bearing: Bearing = 0;
+  /** The hardest the blade swung at this ball, 0..1 of the cap. The bridge reads it as commitment. */
+  private effort = 0;
 
   private innings = new HumanInnings();
   private rng: Rng = makeRng("powerplay");
@@ -514,6 +517,7 @@ export class MatchScene extends Phaser.Scene {
     this.awaitingResult = false;
     this.landingM = 0;
     this.bearing = 0;
+    this.effort = 0;
 
     const over = Math.floor(this.innings.balls / BALLS_PER_OVER);
     if (over !== this.currentOver) this.startOver(over);
@@ -567,6 +571,8 @@ export class MatchScene extends Phaser.Scene {
     const ball = this.ball;
     if (!ball) return;
 
+    if (!this.struck) this.effort = Math.min(1, Math.max(this.effort, Math.abs(this.bat.body.angularVelocity) / MAX_SWING_SPEED));
+
     if (this.justStruck) {
       this.justStruck = false;
       const soft = contactDamping(this.contactAngularVelocity);
@@ -591,7 +597,7 @@ export class MatchScene extends Phaser.Scene {
       field: this.field,
       illegal: this.delivery?.illegal,
     });
-    if (outcome) this.resolve(outcome);
+    if (outcome) this.resolve(this.delivery ? bridge(outcome, this.delivery, { stance: this.stance, effort: this.effort }) : outcome);
   }
 
   private draw(ball: MatterJS.BodyType): void {
