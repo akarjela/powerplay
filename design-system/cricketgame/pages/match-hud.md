@@ -12,7 +12,7 @@ viewport, over the canvas. Grid columns, left to right:
 | Flag | 6px primary + 3px secondary franchise bar | 9px |
 | Score | `CODE` label over the score in `--t-score`; overs beside it in `--t-big` with `OV` label | auto |
 | Chase | Chasing: `TARGET n` label, `NEED r OFF b` in `--t-big`. Batting first: `v CODE · PHASE` and projected total | auto |
-| Rates | The comparison: two bars on one axis, `CRR` and `RRR` (or `PROJ` when batting first). Ahead = `--ahead`, behind = `--behind`. The **gap** is filled and labelled with the signed difference | 1fr, min 160px |
+| Rates | The comparison: two bars on one axis, `CRR` and `RRR` (or `PAR`, 8.25, when batting first). Ahead = `--ahead`, behind = `--behind`. The **gap** is filled and labelled with the signed difference | 1fr, min 160px |
 | Batters | Two rows: striker (live marker) and non-striker. Name, runs, `(balls)`, SR. Striker in `--fg`, non-striker in `--fg-dim` | auto |
 | This over | Six (or more) ball dots in a row; empty = `--dot` outline; dot ball = `--dot` filled; runs = `--ink-2` with the number; four = `--four`; six = `--six`; wicket = `--wicket` with `W`; wide/no-ball = `--extra` with `wd`/`nb`. Label `THIS OVER` and the over's runs | auto |
 | Bowler | Name over `overs-maidens-runs-wickets` figures and `ECON` | auto |

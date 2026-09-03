@@ -18,12 +18,18 @@ import type { Viewport } from "../view/camera";
 import { BallSprite, drawBatsman, drawFielder, drawStumps, lookFor, makeBat } from "../visuals/figures";
 import { drawStadium } from "../visuals/stadium";
 import { Radar } from "../visuals/radar";
+import { Scoreboard } from "../hud/scoreboard";
+import type { ScoreboardModel } from "../hud/scoreboard";
+import { clearMoment, showMoment } from "../hud/moments";
+import { hideCard, showCard } from "../hud/card";
+import { reducedMotion } from "../hud/dom";
 import type { Outcome } from "../../sim/types";
+import { countsAsBall, runsAgainstBowler } from "../../sim/types";
 import { HumanInnings } from "../humanInnings";
 import { bowl, phaseOf } from "../../sim/delivery";
 import type { Delivery, Line, Phase } from "../../sim/delivery";
-import { BALLS_PER_OVER, chooseBowler, oversOf, simulateInnings, strikeRateOf } from "../../sim/innings";
-import type { InningsResult, InningsSummary } from "../../sim/innings";
+import { BALLS_PER_OVER, OVERS, chooseBowler, economyOf, oversOf, simulateInnings, strikeRateOf } from "../../sim/innings";
+import type { BowlingLine, InningsResult, InningsSummary } from "../../sim/innings";
 import { resultOf, scoreline } from "../../sim/match";
 import { makeRng } from "../../sim/rng";
 import type { Rng } from "../../sim/rng";
@@ -34,18 +40,6 @@ import { loadSeason, saveSeason } from "../season/store";
 import { fixtureById, playedFrom, recordResult } from "../../sim/tournament";
 import type { Fixture, Season } from "../../sim/tournament";
 
-const STANCE_LABEL: Record<Stance, string> = {
-  front: "FRONT FOOT",
-  back: "BACK FOOT",
-  neutral: "no stance",
-};
-
-const STANCE_COLOUR: Record<Stance, string> = {
-  front: "#fbbf24",
-  back: "#38bdf8",
-  neutral: "#64748b",
-};
-
 /**
  * Where a delivery's line puts it across the pitch, in metres toward leg. The
  * physics has no such axis; the camera does, so a leg-stump ball is drawn a
@@ -54,7 +48,12 @@ const STANCE_COLOUR: Record<Stance, string> = {
 const LINE_ACROSS: Record<Line, number> = { leg: 0.3, stumps: 0, off: -0.3, "wide-off": -0.8 };
 const WIDE_ACROSS = -1.4;
 
-const FONT = "system-ui, -apple-system, Segoe UI, sans-serif";
+/**
+ * The rate a par first innings runs at: the calibrated ~165 over twenty. When
+ * you bat first there is no required rate to be measured against, so the
+ * strip measures you against this instead.
+ */
+const PAR_RATE = 165 / OVERS;
 
 /** What the scene is started with: who bats, who bowls, and which fixture if any. */
 export interface MatchStart {
@@ -95,6 +94,10 @@ type Stage = "toss" | "batting" | "result";
  * ends. Either way the result comes from `resultOf` on two summaries, one
  * of which happens to be yours, and if this is a fixture it goes straight
  * into the season table.
+ *
+ * The world is Phaser; the broadcast layer over it -- the strip, the cards,
+ * the moments -- is DOM, under `src/game/hud/`. The scene assembles a model
+ * for the strip each ball and otherwise knows nothing about how it looks.
  */
 export class MatchScene extends Phaser.Scene {
   /** The camera for the current viewport; rebuilt on resize. */
@@ -102,14 +105,14 @@ export class MatchScene extends Phaser.Scene {
   private view: Viewport = { width: CANVAS.width, height: CANVAS.height };
   private stadium?: Phaser.GameObjects.Image;
   private stumps: Phaser.GameObjects.Graphics[] = [];
-  private hudRoot?: Phaser.GameObjects.Container;
-  private lastStatus = "";
+  private standsFlash?: Phaser.GameObjects.Rectangle;
 
   private bat!: Bat;
   private batGfx!: Phaser.GameObjects.Container;
   private ball?: MatterJS.BodyType;
   private ballSprite!: BallSprite;
   private radar!: Radar;
+  private scoreboard!: Scoreboard;
 
   private awaitingResult = false;
   private struck = false;
@@ -125,7 +128,6 @@ export class MatchScene extends Phaser.Scene {
   private delivery?: Delivery;
   private batsman!: Phaser.GameObjects.Container;
   private stance: Stance = "neutral";
-  private stanceText!: Phaser.GameObjects.Text;
   private keys!: Record<"front" | "back" | "frontAlt" | "backAlt", Phaser.Input.Keyboard.Key>;
 
   private sides = pickSides();
@@ -134,22 +136,16 @@ export class MatchScene extends Phaser.Scene {
   private stage: Stage = "toss";
   private youBatFirst = true;
   private theirInnings?: InningsResult;
-  private card?: Phaser.GameObjects.Container;
 
   private bowler?: Bowler;
   private lastBowler: Bowler | null = null;
-  private ballsByBowler = new Map<string, number>();
+  private bowling = new Map<string, BowlingLine>();
+  /** Runs conceded by the bowler in the over in progress, for maidens. */
+  private overRunsAgainst = 0;
   private currentOver = -1;
   private phase: Phase = "powerplay";
   private field: Fielder[] = fieldFor("powerplay");
   private fielders: Phaser.GameObjects.Container[] = [];
-
-  private scoreText!: Phaser.GameObjects.Text;
-  private rateText!: Phaser.GameObjects.Text;
-  private creaseText!: Phaser.GameObjects.Text;
-  private statusText!: Phaser.GameObjects.Text;
-  private overMarks!: Phaser.GameObjects.Text;
-  private callText!: Phaser.GameObjects.Text;
 
   constructor() {
     super("match");
@@ -169,8 +165,11 @@ export class MatchScene extends Phaser.Scene {
     // A fixture replays from its seed; a quick match is different every time.
     this.rng = makeRng(this.fixture && this.season ? `${this.season.seed}:${this.fixture.id}` : `quick-${Date.now()}`);
     this.innings = new HumanInnings(this.sides.you.squad);
-    this.ballsByBowler = new Map();
+    this.bowling = new Map();
+    this.overRunsAgainst = 0;
     this.lastBowler = null;
+    this.bowler = undefined;
+    this.delivery = undefined;
     this.currentOver = -1;
     this.phase = "powerplay";
     this.field = fieldFor("powerplay");
@@ -180,7 +179,6 @@ export class MatchScene extends Phaser.Scene {
     this.stance = "neutral";
     this.stage = "toss";
     this.theirInnings = undefined;
-    this.card = undefined;
   }
 
   create(): void {
@@ -203,13 +201,20 @@ export class MatchScene extends Phaser.Scene {
     this.bat = new Bat(this, PIVOT.x, PIVOT.y);
     this.batGfx = makeBat(this).setDepth(depthFor(0, 2));
     this.ballSprite = new BallSprite(this);
+    this.radar = new Radar(this, 0, 0, 70);
+    this.radar.setField(this.field);
+    this.scoreboard = new Scoreboard(() => this.onClick());
 
     this.stadium = undefined;
     this.stumps = [];
-    this.hudRoot = undefined;
     this.layout();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
+      this.scoreboard.destroy();
+      hideCard();
+      clearMoment();
+    });
 
     /**
      * Bounce and contact come from collision events, not from sampling. The
@@ -236,7 +241,7 @@ export class MatchScene extends Phaser.Scene {
             line: this.delivery!.line,
             spray: this.rng.range(-1, 1),
           });
-          this.cameras.main.shake(90, 0.004);
+          if (!reducedMotion()) this.cameras.main.shake(90, 0.004);
         }
       }
     });
@@ -251,6 +256,7 @@ export class MatchScene extends Phaser.Scene {
       frontAlt: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
     keyboard.on("keydown-ESC", () => this.leave());
+    keyboard.on("keydown-SPACE", () => this.onClick());
 
     this.toss();
   }
@@ -259,9 +265,10 @@ export class MatchScene extends Phaser.Scene {
 
   /**
    * Everything that depends on the size of the window: the camera, the baked
-   * ground, the stumps, the fielders and the strip. Called once from `create`
-   * and again on every resize. The batter, the bat and the ball are placed
-   * through the camera every frame and need nothing here.
+   * ground, the stumps and the fielders. Called once from `create` and again
+   * on every resize. The batter, the bat and the ball are placed through the
+   * camera every frame and need nothing here; the strip is CSS and lays
+   * itself out.
    */
   private layout(): void {
     this.view = { width: this.scale.width, height: this.scale.height };
@@ -276,8 +283,12 @@ export class MatchScene extends Phaser.Scene {
     ];
     this.setField(this.field);
 
-    this.buildHud();
-    this.updateHud(this.lastStatus);
+    // The stands, for a flash of light on a boundary: everything above the rope.
+    const rope = this.camera.ground(0, -68)?.sy ?? this.view.height * 0.45;
+    this.standsFlash?.destroy();
+    this.standsFlash = this.add.rectangle(0, 0, this.view.width, rope, 0xfff2cc, 0)
+      .setOrigin(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(-99);
+
     this.radar.setPosition(this.view.width - 96, 96);
   }
 
@@ -295,36 +306,42 @@ export class MatchScene extends Phaser.Scene {
     // Whoever won chooses; chasing means the other side bats first.
     this.youBatFirst = youWon ? !chase : chase;
 
-    const lines: string[] = [];
-    lines.push(`${youWon ? you.name : them.name} won the toss and chose to ${chase ? "field" : "bat"}.`);
+    const lines: { text: string; strong?: boolean }[] = [];
+    lines.push({ text: `${youWon ? you.name : them.name} won the toss and chose to ${chase ? "field" : "bat"}.` });
 
     if (!this.youBatFirst) {
       this.theirInnings = simulateInnings(them.squad, you.squad, this.rng);
       this.innings = new HumanInnings(you.squad, this.theirInnings.runs + 1);
-      lines.push(`${them.name} ${scoreline(this.theirInnings)}.`);
-      lines.push(`You need ${this.theirInnings.runs + 1} to win.`);
+      lines.push({ text: `${them.name} ${scoreline(this.theirInnings)}.` });
+      lines.push({ text: `You need ${this.theirInnings.runs + 1} to win.`, strong: true });
     } else {
-      lines.push(`You bat first. ${them.name} will chase whatever you make.`);
+      lines.push({ text: `You bat first. ${them.name} will chase whatever you make.`, strong: true });
     }
 
     this.stage = "toss";
-    this.showCard(this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`, lines, "Click to take guard");
-    this.updateHud("");
+    showCard({
+      title: this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`,
+      lines,
+      prompt: "Take guard",
+      colours: you.colours,
+    }, () => this.onClick());
+    this.renderHud();
   }
 
   private fixtureTitle(): string {
     const f = this.fixture!;
     const stage = f.stage === "league" ? `Round ${f.round}` : ({
-      qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "THE FINAL",
+      qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "The final",
     } as const)[f.stage];
-    return `${stage}  ·  ${franchiseById(f.home).name} v ${franchiseById(f.away).name}`;
+    return `${stage}: ${franchiseById(f.home).name} v ${franchiseById(f.away).name}`;
   }
 
   private onClick(): void {
     if (this.stage === "toss") {
-      this.hideCard();
+      hideCard();
       this.stage = "batting";
-      this.updateHud("Click to face up. Move the mouse to swing.");
+      this.scoreboard.say("Move the mouse to swing. Arrow keys commit a foot.");
+      this.renderHud();
       return;
     }
     if (this.stage === "result") {
@@ -354,13 +371,13 @@ export class MatchScene extends Phaser.Scene {
     const result = resultOf(first, second);
     const won = result.winner?.id === you.id;
     const lines = [
-      `${you.code} ${scoreline(yours)}     ${them.code} ${scoreline(this.theirInnings!)}`,
-      "",
+      { text: `${you.code} ${scoreline(yours)}     ${them.code} ${scoreline(this.theirInnings!)}`, strong: true },
+      { text: "" },
       ...this.innings.battingLines
         .slice()
         .sort((a, b) => b.runs - a.runs)
         .slice(0, 3)
-        .map((l) => `${l.batter.name}  ${l.runs}${l.dismissal ? "" : "*"} (${l.balls})  SR ${strikeRateOf(l).toFixed(0)}`),
+        .map((l) => ({ text: `${l.batter.name}  ${l.runs}${l.dismissal ? "" : "*"} (${l.balls})  SR ${strikeRateOf(l).toFixed(0)}` })),
     ];
 
     if (this.season && this.fixture) {
@@ -370,114 +387,80 @@ export class MatchScene extends Phaser.Scene {
     }
 
     this.stage = "result";
-    this.showCard(
-      result.winner ? `${result.winner.name} ${result.margin}` : "Tied",
+    showCard({
+      title: result.winner ? `${result.winner.name} ${result.margin}` : "Tied",
       lines,
-      this.season ? "Click for the table" : "Click for the teams",
-      won ? 0x14532d : result.winner ? 0x7f1d1d : 0x1e293b,
-    );
+      prompt: this.season ? "Back to the table" : "Back to the teams",
+      colours: you.colours,
+      tone: won ? "won" : result.winner ? "lost" : "neutral",
+    }, () => this.onClick());
+    this.renderHud();
   }
 
   private leave(): void {
     this.scene.start(this.season ? "season" : "select");
   }
 
-  // -- the card ---------------------------------------------------------------
+  // -- the strip ----------------------------------------------------------------
 
-  private showCard(title: string, lines: string[], prompt: string, tint = 0x0f1b33): void {
-    this.hideCard();
-    const w = 720;
-    const h = 120 + lines.length * 24 + 60;
-    const x = (this.view.width - w) / 2;
-    const y = Math.max(40, this.view.height * 0.2);
-    const c = this.add.container(0, 0).setDepth(1050);
-    c.add(this.add.rectangle(0, 0, this.view.width, this.view.height, 0x000000, 0.45).setOrigin(0));
-    c.add(this.add.rectangle(x, y, w, h, tint, 0.96).setOrigin(0).setStrokeStyle(2, 0x334155));
-    c.add(this.add.rectangle(x, y, w, 8, this.sides.you.colours.primary).setOrigin(0));
-    c.add(this.add.text(x + w / 2, y + 40, title, {
-      fontFamily: FONT, fontSize: "26px", color: "#ffffff", fontStyle: "bold", align: "center", wordWrap: { width: w - 60 },
-    }).setOrigin(0.5));
-    lines.forEach((line, i) => {
-      c.add(this.add.text(x + w / 2, y + 90 + i * 24, line, {
-        fontFamily: FONT, fontSize: "16px", color: "#e2e8f0", align: "center",
-      }).setOrigin(0.5));
-    });
-    c.add(this.add.text(x + w / 2, y + h - 30, prompt, {
-      fontFamily: FONT, fontSize: "13px", color: "#fbbf24", fontStyle: "bold",
-    }).setOrigin(0.5));
-    this.card = c;
-  }
-
-  private hideCard(): void {
-    this.card?.destroy();
-    this.card = undefined;
-  }
-
-  // -- the hud ----------------------------------------------------------------
-
-  private buildHud(): void {
-    const { width, height } = this.view;
-    const strip = 62;
-    const top = height - strip;
-    const { you, them } = this.sides;
-
-    const firstBuild = !this.hudRoot;
-    this.hudRoot?.destroy();
-    const root = this.add.container(0, 0).setDepth(1000);
-    this.hudRoot = root;
-    const text = (x: number, y: number, style: Phaser.Types.GameObjects.Text.TextStyle) => {
-      const t = this.add.text(x, y, "", style);
-      root.add(t);
-      return t;
-    };
-
-    // Everything on the strip sits above the ground and the people on it.
-    root.add(this.add.rectangle(0, top, width, strip, 0x08111f, 0.9).setOrigin(0, 0));
-    root.add(this.add.rectangle(0, top, 6, strip, you.colours.primary).setOrigin(0, 0));
-    root.add(this.add.rectangle(6, top, 3, strip, you.colours.secondary).setOrigin(0, 0));
-
-    this.scoreText = text(26, top + 10, { fontFamily: FONT, fontSize: "30px", color: "#ffffff", fontStyle: "bold" });
-    this.rateText = text(26, top + 44, { fontFamily: FONT, fontSize: "12px", color: "#7dd3fc" });
-    this.creaseText = text(330, top + 10, { fontFamily: FONT, fontSize: "13px", color: "#e2e8f0" });
-    this.overMarks = text(width - 26, top + 12, {
-      fontFamily: "ui-monospace, Menlo, monospace", fontSize: "20px", color: "#e2e8f0",
-    }).setOrigin(1, 0);
-    this.stanceText = text(620, top + 12, { fontFamily: FONT, fontSize: "14px", color: STANCE_COLOUR[this.stance], fontStyle: "bold" })
-      .setText(STANCE_LABEL[this.stance]);
-    text(620, top + 34, { fontFamily: FONT, fontSize: "11px", color: "#64748b" }).setText("← back   → front   esc leave");
-    this.statusText = text(width - 26, top + 42, { fontFamily: FONT, fontSize: "12px", color: "#94a3b8" }).setOrigin(1, 0);
-
-    if (firstBuild) {
-      this.callText = this.add.text(width / 2, 130, "", {
-        fontFamily: FONT, fontSize: "44px", color: "#ffffff", fontStyle: "bold",
-        stroke: "#0a1428", strokeThickness: 6,
-      }).setOrigin(0.5).setDepth(1040).setAlpha(0);
-      this.radar = new Radar(this, width - 96, 96, 70);
-      this.radar.setField(this.field);
-    }
-    this.callText.setPosition(width / 2, 130);
-    root.add(this.add.text(width - 96, 176, `${you.code} bat  ·  ${them.code} bowl`, {
-      fontFamily: FONT, fontSize: "11px", color: "#cbd5e1",
-    }).setOrigin(0.5, 0));
-  }
-
-  private updateHud(status: string): void {
+  private renderHud(): void {
     const innings = this.innings;
     const { you, them } = this.sides;
-    this.scoreText.setText(`${you.code}  ${innings.score}   (${innings.oversText})`);
-
     const need = innings.required;
-    const chase = need
-      ? `Target ${innings.target}   ·   need ${need.runs} off ${need.balls}   ·   RRR ${innings.requiredRate.toFixed(2)}`
-      : `CRR ${innings.runRate.toFixed(2)}   ·   v ${them.code}   ·   ${this.phase}`;
-    this.rateText.setText(chase);
 
-    const crease = innings.atTheCrease.map((l, i) => `${l.batter.name.split(" ").pop()} ${l.runs}${i === 0 ? "*" : ""} (${l.balls})`);
-    this.creaseText.setText(crease.join("     "));
+    const action: ScoreboardModel["action"] = this.stage === "toss"
+      ? { label: "Take guard", enabled: true, waiting: true }
+      : this.stage === "result"
+        ? { label: this.season ? "To the table" : "To the teams", enabled: true, waiting: true }
+        : innings.complete
+          ? { label: "Innings over", enabled: false, waiting: false }
+          : this.ball
+            ? { label: "In play", enabled: false, waiting: false }
+            : this.awaitingResult
+              ? { label: "Next ball", enabled: false, waiting: false }
+              : { label: "Next ball", enabled: true, waiting: true };
 
-    this.overMarks.setText(innings.thisOver.map((ball) => ball.label).join(" "));
-    this.statusText.setText(status);
-    this.lastStatus = status;
+    const line = this.bowler ? this.bowlingLine(this.bowler) : undefined;
+
+    this.scoreboard.render({
+      team: { code: you.code, primary: you.colours.primary, secondary: you.colours.secondary },
+      opponent: them.code,
+      runs: innings.runs,
+      wickets: innings.wickets,
+      allOut: innings.score.indexOf("/") < 0,
+      overs: innings.oversText,
+      runRate: innings.runRate,
+      phase: this.phase,
+      target: innings.target,
+      need,
+      requiredRate: need ? innings.requiredRate : undefined,
+      projected: need ? undefined : Math.round(innings.balls === 0 ? 0 : innings.runs + innings.runRate * (OVERS - innings.balls / BALLS_PER_OVER)),
+      par: need ? undefined : PAR_RATE,
+      batters: innings.atTheCrease.map((l, i) => ({
+        name: l.batter.name, runs: l.runs, balls: l.balls, strikeRate: strikeRateOf(l), onStrike: i === 0,
+      })),
+      over: { number: innings.thisOverNumber, balls: innings.thisOver, runs: innings.thisOverRuns },
+      bowler: line && {
+        name: line.bowler.name,
+        overs: oversOf(line.balls),
+        maidens: line.maidens,
+        runs: line.runs,
+        wickets: line.wickets,
+        economy: economyOf(line),
+        speedKph: this.delivery?.speed,
+      },
+      action,
+      stance: this.stance,
+    });
+  }
+
+  private bowlingLine(bowler: Bowler): BowlingLine {
+    let line = this.bowling.get(bowler.id);
+    if (!line) {
+      line = { bowler, balls: 0, runs: 0, wickets: 0, maidens: 0 };
+      this.bowling.set(bowler.id, line);
+    }
+    return line;
   }
 
   // -- the field and the attack ------------------------------------------------
@@ -505,9 +488,10 @@ export class MatchScene extends Phaser.Scene {
       this.phase = phase;
       this.setField(fieldFor(phase));
     }
-    const oversBowled = (b: Bowler) => Math.floor((this.ballsByBowler.get(b.id) ?? 0) / BALLS_PER_OVER);
+    const oversBowled = (b: Bowler) => Math.floor((this.bowling.get(b.id)?.balls ?? 0) / BALLS_PER_OVER);
     this.bowler = chooseBowler(this.sides.them.squad.bowlers, oversBowled, this.lastBowler, this.rng);
     this.lastBowler = this.bowler;
+    this.overRunsAgainst = 0;
   }
 
   private bowl(): void {
@@ -543,8 +527,8 @@ export class MatchScene extends Phaser.Scene {
     this.ball = ball;
     this.ballSprite.setVisible(true);
     this.ballSprite.setGhost(delivery.illegal === "wide");
-    const balls = this.ballsByBowler.get(bowler.id) ?? 0;
-    this.updateHud(`${bowler.name} (${oversOf(balls)}) in — ${Math.round(delivery.speed)}kph`);
+    clearMoment();
+    this.renderHud();
   }
 
   // -- the frame --------------------------------------------------------------
@@ -617,7 +601,7 @@ export class MatchScene extends Phaser.Scene {
     const shadow = this.camera.project({ ...world, y: 0 });
     if (!p || !shadow) return;
     this.ballSprite.setDepth(depthFor(acrossM));
-    this.ballSprite.update(p, shadow, heightPx);
+    this.ballSprite.update(p, shadow, heightPx, this.struck && !this.bouncedAfterStrike);
   }
 
   private readStance(): void {
@@ -628,7 +612,7 @@ export class MatchScene extends Phaser.Scene {
     if (stance !== this.stance) {
       this.stance = stance;
       this.bat.setStance(stance);
-      this.stanceText.setText(STANCE_LABEL[stance]).setColor(STANCE_COLOUR[stance]);
+      this.renderHud();
     }
   }
 
@@ -636,9 +620,19 @@ export class MatchScene extends Phaser.Scene {
     if (this.awaitingResult) return;
     this.awaitingResult = true;
 
+    const striker = this.innings.atTheCrease[0];
+    const runsBefore = striker?.runs ?? 0;
     this.innings.record(outcome);
-    if (this.bowler && outcome.extra !== "wide" && outcome.extra !== "no-ball") {
-      this.ballsByBowler.set(this.bowler.id, (this.ballsByBowler.get(this.bowler.id) ?? 0) + 1);
+
+    if (this.bowler) {
+      const line = this.bowlingLine(this.bowler);
+      const legal = countsAsBall(outcome);
+      if (legal) line.balls++;
+      const conceded = runsAgainstBowler(outcome);
+      line.runs += conceded;
+      this.overRunsAgainst += conceded;
+      if (outcome.wicket && outcome.wicket !== "run-out") line.wickets++;
+      if (legal && line.balls % BALLS_PER_OVER === 0 && this.overRunsAgainst === 0) line.maidens++;
     }
 
     if (this.struck && this.ball) {
@@ -647,32 +641,85 @@ export class MatchScene extends Phaser.Scene {
     }
     this.radar.hideBall();
 
-    this.announce(outcome);
-    const length = this.delivery && !this.delivery.illegal ? `${this.delivery.length} length   ·   ` : "";
-    this.updateHud(this.innings.complete ? "" : `${length}Click for the next ball`);
-
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
     this.ballSprite.setVisible(false);
 
+    this.announce(outcome, striker?.batter.id, runsBefore);
+    this.renderHud();
+
     this.time.delayedCall(400, () => {
       this.awaitingResult = false;
+      this.renderHud();
     });
     if (this.innings.complete) {
-      this.time.delayedCall(1400, () => this.finishMatch());
+      this.time.delayedCall(1600, () => this.finishMatch());
     }
   }
 
-  private announce(outcome: Outcome): void {
-    const colour = outcome.wicket ? "#f87171" : outcome.runs >= 4 ? "#fbbf24" : "#e2e8f0";
-    const text = this.innings.complete
-      ? `${this.innings.closedBecause} — ${this.innings.score} (${this.innings.oversText})`
-      : outcome.description;
-    this.callText.setText(text).setColor(colour).setAlpha(1).setScale(0.85);
+  /**
+   * What the ball was, as a broadcast would say it: the call on the strip,
+   * a moment for anything worth one, and the game feel that goes with it.
+   * Every effect is under 600ms and none of them run under reduced motion.
+   */
+  private announce(outcome: Outcome, strikerId: string | undefined, runsBefore: number): void {
+    const innings = this.innings;
+    const kind = outcome.wicket ? "wicket" : outcome.runs === 6 ? "six" : outcome.runs === 4 ? "four" : "";
+    this.scoreboard.say(
+      innings.complete ? `${innings.closedBecause}: ${innings.score} (${innings.oversText})` : outcome.description,
+      kind,
+      innings.complete ? 4000 : 1600,
+    );
 
-    this.tweens.add({ targets: this.callText, scale: 1, duration: 180, ease: "Back.easeOut" });
-    if (!this.innings.complete) {
-      this.tweens.add({ targets: this.callText, alpha: 0, delay: 1100, duration: 400 });
+    const calm = reducedMotion();
+    let busyUntil = 0;
+    if (outcome.wicket) {
+      showMoment({ kind: "wicket", how: outcome.description });
+      busyUntil = 1250;
+      if (!calm) this.cameras.main.shake(260, 0.009);
+    } else if (outcome.runs === 6) {
+      showMoment({ kind: "six" });
+      busyUntil = 1150;
+      this.boundaryFlash(0.3);
+      if (!calm) this.pushIn();
+    } else if (outcome.runs === 4) {
+      showMoment({ kind: "four" });
+      busyUntil = 900;
+      this.boundaryFlash(0.2);
     }
+
+    // A fifty or a hundred is earned; it follows the boundary that brought it up.
+    const after = strikerId ? innings.battingLines.find((l) => l.batter.id === strikerId) : undefined;
+    if (after && !outcome.extra) {
+      for (const mark of [50, 100] as const) {
+        if (runsBefore < mark && after.runs >= mark) {
+          this.time.delayedCall(busyUntil, () => showMoment({ kind: "milestone", runs: mark, batter: after.batter.name, balls: after.balls }));
+          busyUntil += 1300;
+        }
+      }
+    }
+
+    // End of the over: a lower third, once the ball's own moment has had its say.
+    if (countsAsBall(outcome) && innings.balls % BALLS_PER_OVER === 0 && !innings.complete) {
+      this.time.delayedCall(Math.max(busyUntil, 350), () => {
+        if (!this.ball) showMoment({ kind: "over", number: innings.thisOverNumber, balls: innings.thisOver, runs: innings.thisOverRuns });
+      });
+    }
+  }
+
+  /** The stands light up for a moment on a boundary. */
+  private boundaryFlash(peak: number): void {
+    if (!this.standsFlash || reducedMotion()) return;
+    this.tweens.killTweensOf(this.standsFlash);
+    this.standsFlash.setAlpha(peak);
+    this.tweens.add({ targets: this.standsFlash, alpha: 0, duration: 420, ease: "Quad.easeOut" });
+  }
+
+  /** A slight push-in on a six: 3.5% for a quarter of a second, then back. */
+  private pushIn(): void {
+    const cam = this.cameras.main;
+    this.tweens.killTweensOf(cam);
+    cam.setZoom(1);
+    this.tweens.add({ targets: cam, zoom: 1.035, duration: 240, ease: "Quad.easeOut", yoyo: true, hold: 60 });
   }
 }

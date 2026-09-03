@@ -380,8 +380,12 @@ export class BallSprite {
     this.trail.setDepth(depth + 2);
   }
 
-  /** Both projected: the ball where it is, the shadow on the turf beneath it. */
-  update(ball: Projected, shadow: Projected, heightPx: number): void {
+  /**
+   * Both projected: the ball where it is, the shadow on the turf beneath it.
+   * `hot` is a struck ball still in the air: its trail is longer and whiter,
+   * the way a tracer reads on a broadcast.
+   */
+  update(ball: Projected, shadow: Projected, heightPx: number, hot = false): void {
     this.gfx.setPosition(ball.sx, ball.sy).setScale(ball.scale);
 
     const fade = Phaser.Math.Clamp(1 - heightPx / 420, 0.25, 1);
@@ -390,12 +394,13 @@ export class BallSprite {
       .setAlpha(0.45 * fade);
 
     this.history.push({ x: ball.sx, y: ball.sy, w: ball.scale });
-    if (this.history.length > 14) this.history.shift();
+    const keep = hot ? 24 : 14;
+    while (this.history.length > keep) this.history.shift();
 
     this.trail.clear();
     for (let i = 1; i < this.history.length; i++) {
       const t = i / this.history.length;
-      this.trail.lineStyle(BALL_RADIUS * 0.9 * t * this.history[i].w, 0xef8a7d, t * 0.4);
+      this.trail.lineStyle(BALL_RADIUS * (hot ? 1.3 : 0.9) * t * this.history[i].w, hot ? 0xfff1e6 : 0xef8a7d, t * (hot ? 0.7 : 0.4));
       this.trail.lineBetween(
         this.history[i - 1].x, this.history[i - 1].y,
         this.history[i].x, this.history[i].y,

@@ -47,6 +47,9 @@ export class HumanInnings {
 
   /** The current over so far, for the broadcast strip. Cleared as each over starts. */
   private over: BallMark[] = [];
+  private overRuns = 0;
+  /** 1-based; the over the strip is showing. */
+  private overNumber = 1;
 
   constructor(squad?: Squad, target?: number) {
     this.squad = squad;
@@ -64,10 +67,13 @@ export class HumanInnings {
     // it finishes, so the strip still shows the over you just watched.
     if (this.balls > 0 && this.balls % BALLS_PER_OVER === 0 && this.over.length >= BALLS_PER_OVER) {
       this.over = [];
+      this.overRuns = 0;
+      this.overNumber = this.balls / BALLS_PER_OVER + 1;
     }
 
     const scored = outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
     this.runs += scored;
+    this.overRuns += scored;
     if (outcome.wicket) this.wickets++;
     const legal = countsAsBall(outcome);
     if (legal) this.balls++;
@@ -144,6 +150,16 @@ export class HumanInnings {
 
   get thisOver(): readonly BallMark[] {
     return this.over;
+  }
+
+  /** Runs off the over on the strip, extras included. */
+  get thisOverRuns(): number {
+    return this.overRuns;
+  }
+
+  /** The over on the strip, 1-based. Stays on a finished over until the next ball. */
+  get thisOverNumber(): number {
+    return this.overNumber;
   }
 
   /** The men at the crease, striker first. Empty without a squad. */

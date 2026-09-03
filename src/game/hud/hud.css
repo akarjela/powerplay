@@ -1,0 +1,419 @@
+/*
+ * The broadcast layer. Tokens from design-system/cricketgame/MASTER.md.
+ *
+ * Everything here sits over the canvas in #hud, which never takes the pointer:
+ * the swing is a mouse move over the canvas and must not be intercepted. The
+ * one exception is the primary action, which opts back in.
+ */
+
+:root {
+  --ink-0: #05070c;
+  --ink-1: #0b0f1a;
+  --ink-2: #151b2b;
+  --line: #263049;
+  --fg: #f5f7fb;
+  --fg-dim: #9aa5bd;
+  --fg-mute: #5c6780;
+  --live: #00e5ff;
+  --on-live: #04121a;
+  --four: #ffc400;
+  --six: #ff5a1f;
+  --wicket: #ff1e4a;
+  --ahead: #22e58a;
+  --behind: #ff3b3b;
+  --extra: #c084fc;
+  --dot: #2e3648;
+  --milestone: #ffd966;
+
+  --display: "Bebas Neue", Impact, "Arial Narrow Bold", sans-serif;
+  --data: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+
+  --t-score: clamp(34px, 6.6vh, 64px);
+  --t-big: clamp(20px, 3.2vh, 34px);
+  --t-data: clamp(13px, 1.9vh, 18px);
+  --t-label: clamp(10px, 1.3vh, 12px);
+  --t-moment: clamp(96px, 26vw, 420px);
+
+  --strip-h: min(15vh, 112px);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+#hud * { box-sizing: border-box; }
+
+/* ---------------------------------------------------------------- the strip */
+
+.strip {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: var(--strip-h);
+  display: grid;
+  grid-template-columns: 9px auto auto minmax(200px, 1fr) auto auto auto auto;
+  background: var(--ink-0);
+  color: var(--fg);
+  font-family: var(--data);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-data);
+  line-height: 1.1;
+  border-top: 1px solid var(--line);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+}
+.strip.is-on { opacity: 1; transform: none; }
+
+.cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 clamp(10px, 1.2vw, 20px);
+  border-right: 1px solid var(--line);
+  min-width: 0;
+  white-space: nowrap;
+}
+.cell:last-child { border-right: 0; }
+
+.label {
+  font-size: var(--t-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.display { font-family: var(--display); letter-spacing: 0.01em; }
+.dim { color: var(--fg-dim); }
+.mute { color: var(--fg-mute); }
+
+/* The flag: the batting side's colours on the leading edge. */
+.flag {
+  padding: 0;
+  border: 0;
+  background: linear-gradient(to right, var(--flag-primary) 0 6px, var(--flag-secondary) 6px 9px);
+}
+
+/* Score: code small, the score huge, the overs beside it. */
+.score { flex-direction: row; align-items: baseline; gap: clamp(8px, 1vw, 16px); }
+.score .code { font-family: var(--display); font-size: var(--t-big); color: var(--fg-dim); }
+.score .runs { font-family: var(--display); font-size: var(--t-score); line-height: 0.9; }
+.score .overs { display: flex; flex-direction: column; align-items: flex-start; }
+.score .overs .n { font-family: var(--display); font-size: var(--t-big); line-height: 0.9; }
+
+/* Chase: the two numbers a chaser actually reads. */
+.chase .big { font-family: var(--display); font-size: var(--t-big); line-height: 0.95; }
+.chase .big b { color: var(--live); font-weight: 400; }
+
+/* Rates: the comparison. One axis; CRR is a bar, RRR a marker, the gap fills. */
+.rates { gap: 4px; }
+.rates .axis {
+  position: relative;
+  height: clamp(10px, 1.6vh, 14px);
+  background: var(--ink-2);
+  overflow: hidden;
+}
+.rates .crr {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: var(--crr, 0%);
+  background: var(--fg-dim);
+  transition: width 220ms var(--ease), background-color 220ms var(--ease);
+}
+.rates .gap {
+  position: absolute; top: 0; bottom: 0;
+  left: var(--gap-left, 0%);
+  width: var(--gap-width, 0%);
+  background: var(--gap-colour, transparent);
+  opacity: 0.45;
+  transition: left 220ms var(--ease), width 220ms var(--ease);
+}
+.rates .rrr {
+  position: absolute; top: -2px; bottom: -2px;
+  left: var(--rrr, 0%);
+  width: 3px;
+  margin-left: -1px;
+  background: var(--fg);
+  transition: left 220ms var(--ease);
+}
+.rates .axis.par .rrr { background: var(--fg-dim); }
+.rates .axis.par .gap { opacity: 0.25; }
+.rates .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.rates .row .fig { font-family: var(--display); font-size: var(--t-big); line-height: 0.9; }
+.rates .diff { font-family: var(--display); font-size: var(--t-big); line-height: 0.9; }
+.rates.is-behind .crr { background: var(--behind); }
+.rates.is-behind .diff { color: var(--behind); }
+.rates.is-ahead .crr { background: var(--ahead); }
+.rates.is-ahead .diff { color: var(--ahead); }
+.rates.is-pressure { box-shadow: inset 0 -3px 0 var(--behind); }
+.rates.is-pressure .label { color: var(--behind); }
+
+/* Batters. */
+.batters .row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: baseline;
+}
+.batters .row.non { color: var(--fg-dim); }
+.batters .mark { width: 6px; height: 6px; background: transparent; align-self: center; }
+.batters .row.on .mark { background: var(--live); }
+.batters .name { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.batters .row.non .name { font-weight: 500; }
+.batters .r { font-family: var(--display); font-size: calc(var(--t-data) * 1.35); line-height: 0.9; }
+.batters .b, .batters .sr { font-size: var(--t-label); color: var(--fg-dim); letter-spacing: 0.04em; }
+
+/* This over. */
+.balls { display: flex; gap: 4px; align-items: center; }
+.balls .ball {
+  width: clamp(18px, 2.6vh, 24px);
+  height: clamp(18px, 2.6vh, 24px);
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-size: calc(var(--t-data) * 1.05);
+  line-height: 1;
+  border: 1px solid var(--dot);
+  color: var(--fg);
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px));
+  transition: background-color 150ms var(--ease), transform 150ms var(--ease);
+}
+.balls .ball.empty { border-style: dashed; }
+.balls .ball.dot { background: var(--dot); color: var(--fg-dim); }
+.balls .ball.runs { background: var(--ink-2); border-color: var(--line); }
+.balls .ball.boundary { background: var(--four); color: var(--ink-0); border-color: var(--four); }
+.balls .ball.six { background: var(--six); color: var(--ink-0); border-color: var(--six); }
+.balls .ball.wicket { background: var(--wicket); color: var(--fg); border-color: var(--wicket); }
+.balls .ball.extra { background: transparent; color: var(--extra); border-color: var(--extra); font-size: var(--t-label); font-family: var(--data); font-weight: 700; }
+.balls .ball.new { animation: ball-in 180ms var(--ease); }
+@keyframes ball-in { from { transform: scale(0.6); } to { transform: none; } }
+.over .head { display: flex; justify-content: space-between; gap: 10px; }
+.over .head .fig { font-family: var(--display); color: var(--fg); font-size: calc(var(--t-data) * 1.2); line-height: 1; }
+
+/* Bowler. */
+.bowler .name { font-weight: 600; }
+.bowler .figs { font-family: var(--display); font-size: var(--t-big); line-height: 0.9; }
+.bowler .sub { display: flex; gap: 12px; }
+
+/* The primary action. */
+.action { align-items: stretch; gap: 4px; padding-right: clamp(10px, 1.2vw, 20px); }
+.action button {
+  pointer-events: auto;
+  cursor: pointer;
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0 clamp(14px, 1.6vw, 24px);
+  height: clamp(30px, 5vh, 42px);
+  background: var(--live);
+  color: var(--on-live);
+  font-family: var(--display);
+  font-size: calc(var(--t-big) * 0.85);
+  letter-spacing: 0.06em;
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  transition: background-color 150ms var(--ease), color 150ms var(--ease), transform 150ms var(--ease);
+}
+.action button:hover { background: #5cf0ff; }
+.action button:active { transform: translateY(1px); }
+.action button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.action button:disabled { cursor: default; background: var(--ink-2); color: var(--fg-mute); }
+.action button.is-waiting { animation: pulse 900ms ease-in-out infinite alternate; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.03); } }
+.action .stance { display: flex; justify-content: space-between; gap: 10px; font-size: var(--t-label); letter-spacing: 0.08em; text-transform: uppercase; }
+.action .stance .foot { font-weight: 700; color: var(--fg-dim); }
+.action .stance .foot.front { color: var(--four); }
+.action .stance .foot.back { color: var(--live); }
+.action .stance .keys { color: var(--fg-mute); }
+
+/* The call: the last ball, said once, just above the strip on the left. */
+.call {
+  position: absolute;
+  left: 9px;
+  bottom: calc(var(--strip-h) + 6px);
+  padding: 4px 12px 4px 10px;
+  background: var(--ink-1);
+  border-left: 3px solid var(--fg-dim);
+  color: var(--fg);
+  font-family: var(--data);
+  font-size: var(--t-data);
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 180ms var(--ease), transform 180ms var(--ease);
+}
+.call.is-on { opacity: 1; transform: none; }
+.call.four { border-left-color: var(--four); }
+.call.six { border-left-color: var(--six); }
+.call.wicket { border-left-color: var(--wicket); }
+
+/* Narrow viewports: shed the least important cells first. */
+@media (max-width: 1100px) {
+  .action .stance .keys, .bowler .sub .econ { display: none; }
+}
+@media (max-width: 900px) {
+  .batters .row.non, .bowler { display: none; }
+  .strip { grid-template-columns: 9px auto auto minmax(120px, 1fr) auto auto auto; }
+}
+
+/* ---------------------------------------------------------------- the cards */
+
+.scrim {
+  position: absolute; inset: 0;
+  background: rgba(2, 4, 10, 0.55);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 200ms var(--ease);
+}
+.scrim.is-on { opacity: 1; }
+.card {
+  width: min(720px, 90vw);
+  background: var(--ink-1);
+  border-top: 8px solid var(--flag-primary);
+  box-shadow: inset 0 8px 0 -5px var(--flag-secondary);
+  color: var(--fg);
+  font-family: var(--data);
+  padding: clamp(20px, 4vh, 36px) clamp(20px, 3vw, 40px);
+  text-align: center;
+}
+.card.won { border-top-color: var(--ahead); box-shadow: none; }
+.card.lost { border-top-color: var(--wicket); box-shadow: none; }
+.card .title { font-family: var(--display); font-size: clamp(30px, 5vh, 48px); line-height: 1; margin-bottom: clamp(10px, 2vh, 18px); }
+.card .line { font-size: clamp(14px, 2.2vh, 19px); color: var(--fg-dim); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.card .line.strong { color: var(--fg); font-weight: 600; }
+.card .prompt { margin-top: clamp(14px, 3vh, 24px); font-family: var(--display); font-size: clamp(16px, 2.6vh, 22px); letter-spacing: 0.08em; color: var(--live); }
+
+/* ---------------------------------------------------------------- moments */
+
+.moment {
+  position: absolute; inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-family: var(--display);
+  color: var(--fg);
+  text-align: center;
+}
+.moment .word {
+  font-size: var(--t-moment);
+  line-height: 0.85;
+  letter-spacing: 0.02em;
+  will-change: transform, opacity;
+}
+.moment .sub {
+  font-family: var(--data);
+  font-weight: 600;
+  font-size: clamp(16px, 2.6vh, 26px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin-top: clamp(8px, 1.5vh, 16px);
+}
+
+/* FOUR: clean and quick, a band sweeps out under the word. */
+.moment.four .word { color: var(--four); animation: four-word 900ms var(--ease) forwards; }
+.moment.four .band {
+  position: absolute; left: -10%; right: -10%; top: 50%;
+  height: calc(var(--t-moment) * 0.55);
+  transform: translateY(-50%) skewY(-4deg) scaleX(0);
+  transform-origin: left center;
+  background: var(--four);
+  opacity: 0.14;
+  animation: band 900ms var(--ease) forwards;
+}
+@keyframes four-word {
+  0% { transform: scale(1.15); opacity: 0; }
+  13% { transform: scale(1); opacity: 1; }
+  70% { transform: scale(1); opacity: 1; }
+  100% { transform: translateY(-14px); opacity: 0; }
+}
+@keyframes band {
+  0% { transform: translateY(-50%) skewY(-4deg) scaleX(0); }
+  25% { transform: translateY(-50%) skewY(-4deg) scaleX(1); }
+  75% { opacity: 0.14; }
+  100% { transform: translateY(-50%) skewY(-4deg) scaleX(1); opacity: 0; }
+}
+
+/* SIX: explosive. A white flash, a shock ring, the word bursts and spreads. */
+.moment.six .word { color: var(--six); animation: six-word 1150ms var(--ease) forwards; }
+.moment.six .flash { position: absolute; inset: 0; background: #fff; animation: flash 220ms ease-out forwards; }
+.moment.six .ring {
+  position: absolute; left: 50%; top: 50%;
+  width: 20vmin; height: 20vmin;
+  margin: -10vmin 0 0 -10vmin;
+  border: 6px solid var(--six);
+  border-radius: 50%;
+  animation: ring 700ms ease-out forwards;
+}
+@keyframes six-word {
+  0% { transform: scale(0.4); opacity: 0; letter-spacing: -0.05em; }
+  16% { transform: scale(1.08); opacity: 1; letter-spacing: 0.02em; }
+  24% { transform: scale(1); }
+  72% { transform: scale(1); opacity: 1; letter-spacing: 0.06em; }
+  100% { transform: scale(1.04); opacity: 0; letter-spacing: 0.12em; }
+}
+@keyframes flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+@keyframes ring { 0% { transform: scale(0.2); opacity: 0.9; } 100% { transform: scale(8); opacity: 0; } }
+
+/* WICKET: a gut punch. The frame dims, the word drops and stops dead, a red bar cuts across. */
+.moment.wicket { background: rgba(0, 0, 0, 0); animation: dim 1250ms var(--ease) forwards; }
+.moment.wicket .word { color: var(--wicket); animation: wicket-word 1250ms cubic-bezier(0.7, 0, 0.2, 1) forwards; }
+.moment.wicket .bar {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 6px;
+  margin-top: calc(var(--t-moment) * 0.46);
+  background: var(--wicket);
+  transform: scaleX(0);
+  animation: cut 1250ms var(--ease) forwards;
+}
+.moment.wicket .sub { color: var(--fg); animation: sub-in 1250ms var(--ease) forwards; }
+@keyframes dim { 0% { background: rgba(0,0,0,0); } 8% { background: rgba(0,0,0,0.42); } 75% { background: rgba(0,0,0,0.42); } 100% { background: rgba(0,0,0,0); } }
+@keyframes wicket-word {
+  0% { transform: translateY(-18px); opacity: 0; }
+  7% { transform: translateY(6px); opacity: 1; }
+  11% { transform: translateY(0); }
+  75% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+@keyframes cut { 0%, 7% { transform: scaleX(0); } 22% { transform: scaleX(1); } 75% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes sub-in { 0%, 14% { opacity: 0; } 26% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* FIFTY / HUNDRED: earned. The number counts up over the name, a gold rule underlines it. */
+.moment.milestone .word { color: var(--milestone); animation: milestone-word 1300ms var(--ease) forwards; }
+.moment.milestone .rule {
+  position: absolute; left: 50%; top: 50%;
+  width: min(60vw, 520px); height: 4px;
+  margin-top: calc(var(--t-moment) * 0.5);
+  transform: translateX(-50%) scaleX(0);
+  background: var(--milestone);
+  animation: rule 1300ms var(--ease) forwards;
+}
+.moment.milestone .sub { color: var(--fg); animation: milestone-sub 1300ms var(--ease) forwards; }
+@keyframes milestone-word { 0% { opacity: 0; transform: translateY(6px); } 10% { opacity: 1; transform: none; } 77% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes rule { 0%, 20% { transform: translateX(-50%) scaleX(0); } 40% { transform: translateX(-50%) scaleX(1); } 77% { opacity: 1; } 100% { transform: translateX(-50%) scaleX(1); opacity: 0; } }
+@keyframes milestone-sub { 0% { opacity: 0; } 25% { opacity: 1; } 77% { opacity: 1; } 100% { opacity: 0; } }
+
+/* END OF OVER: a lower third, not a headline. Rises 8px out of the strip. */
+.moment.over-end { place-items: end start; padding: 0 0 calc(var(--strip-h) + 6px) 9px; }
+.moment.over-end .panel {
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 16px 8px 12px;
+  background: var(--ink-1);
+  border-left: 3px solid var(--fg);
+  animation: over-panel 1480ms var(--ease) forwards;
+}
+.moment.over-end .head { font-size: calc(var(--t-data) * 1.4); line-height: 1; }
+.moment.over-end .runs { font-size: calc(var(--t-data) * 1.6); line-height: 1; color: var(--live); }
+.moment.over-end .balls { display: flex; gap: 4px; }
+@keyframes over-panel { 0% { opacity: 0; transform: translateY(8px); } 11% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---------------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .strip, .call, .scrim, .rates .crr, .rates .gap, .rates .rrr, .balls .ball, .action button { transition: none; }
+  .balls .ball.new, .action button.is-waiting { animation: none; }
+  .moment, .moment .word, .moment .sub, .moment .band, .moment .flash, .moment .ring, .moment .bar, .moment .rule, .moment .panel {
+    animation: rm-fade var(--rm-duration, 1000ms) linear forwards !important;
+    transform: none !important;
+  }
+  .moment .flash, .moment .ring { display: none; }
+  .moment .band { transform: translateY(-50%) !important; }
+  @keyframes rm-fade { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+}

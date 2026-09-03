@@ -127,3 +127,23 @@ describe("the human innings with a batting order and a target", () => {
     expect(() => new HumanInnings().summary).toThrow(/squad/);
   });
 });
+
+describe("the over on the strip", () => {
+  it("counts the over's runs, extras included, and numbers the over", () => {
+    const innings = new HumanInnings();
+    expect(innings.thisOverNumber).toBe(1);
+    innings.record({ runs: 4, description: "four" });
+    innings.record({ runs: 0, extra: "wide", description: "wide" });
+    innings.record({ runs: 1, description: "one" });
+    expect(innings.thisOverRuns).toBe(6);
+    for (let i = 0; i < 4; i++) innings.record({ runs: 0, description: "dot" });
+    // Six legal balls: the over is done but still showing.
+    expect(innings.thisOver.length).toBe(7);
+    expect(innings.thisOverNumber).toBe(1);
+    expect(innings.thisOverRuns).toBe(6);
+    innings.record({ runs: 2, description: "two" });
+    expect(innings.thisOver.length).toBe(1);
+    expect(innings.thisOverNumber).toBe(2);
+    expect(innings.thisOverRuns).toBe(2);
+  });
+});
