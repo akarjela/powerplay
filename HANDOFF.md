@@ -1,16 +1,18 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-03, night. M1, M2, track 3 and **M4** complete;
-track 2 through phase 3 of 4; M3 done bar the bridge. There is a real match
+_Last updated: 2026-09-03, late. M1, M2, **track 2, track 3, M3 and M4 all
+complete** -- the bridge is built and measured. There is a real match
 now -- a toss, a target if you are put in, the model chasing you if you are
 not -- and a **season**: a round robin of ten, a points table with net run
 rate, the IPL bracket, a champion, saved in localStorage. The ground is a
 perspective camera's view of a stadium with a crowd of people in it, and the
 players have faces. A headless harness plays the actual Matter world in Node,
-which is how the physics was measured. **New this session: a UI pass** -- the
+which is how the physics was measured. **New this session:** a UI pass -- the
 canvas is full-bleed, the HUD is a broadcast lower third in the DOM, fours,
-sixes, wickets and fifties are full-screen moments, and the crowd moves.
-Nothing is mid-edit; the tree is clean and every test passes._
+sixes, wickets and fifties are full-screen moments, and the crowd moves --
+and then the three items at the top of the list: the bridge, power at the
+crease, and their innings watched ball by ball. Nothing is mid-edit; the
+tree is clean and every test passes._
 
 **Every session that touches UI starts with: "Read
 `design-system/cricketgame/MASTER.md` first."** It holds the palette, the
@@ -62,40 +64,48 @@ Read this first; everything below is the detail behind it.
   shadows, radiating mowing stripes, floodlight bloom, a padded rope, and a
   crowd in four crossfaded frames that stands up for a boundary. All of it
   honours `prefers-reduced-motion`.
+- **Track 2, phase 4 -- the bridge.** `src/sim/bridge.ts` reads the stance
+  key and how hard the blade swung as the sim's `Shot`; `Outcome.shot` is
+  set on every legal physics ball and a dismissal says which foot was
+  played. `tests/bridge.test.ts` plays the same 600 deliveries through both
+  paths and measures them side by side (below).
+- **Power at the crease.** A batter's power scales the ball's speed off the
+  bat, centred on average; the striker's face changes with the order.
+  Technique was tried two ways and measured inert or wrong; it stays out.
+- **Their innings, watched.** A broadcast panel replays the simulated
+  innings ball by ball with pacing, moments, a 3x speed and a skip -- before
+  you bat when you chase, after your innings when you set a target.
 
 ### What is left
 
 Ordered by how much a player would notice.
 
-1. **The bridge (track 2, phase 4).** A human's shot never reaches the model:
-   `Outcome.shot` is undefined on the physics path, so your dismissals are
-   unexplained on the scorecard and nobody has measured whether a human
-   innings and a simulated one value a ball the same way. The season table
-   now sits on both, so this is the most important open item.
-2. **Your batters' attributes do nothing at the crease.** Malhotra and the
-   number eleven swing the same bat. Power and technique should reach the
-   physics.
-3. **You never see their innings.** It is a number on a card. A live,
-   skippable scorecard of the simulated innings would make it a match.
-4. **Fielders do not move on screen**, and deep point and third man are
+1. **The two paths do not value a ball identically**, and now that is a
+   number rather than a worry. Over the harness's random player the physics
+   gives 1.35 runs a ball to the model's 1.15 and 9.0% wickets to 7.1%; it
+   punishes an attack harder (20% wickets against 11%) and pays a block
+   more (0.87 runs a ball against 0.50). Whether to tune either path toward
+   the other is a design call, not a bug; the table is a `MEASURE=1` away.
+2. **The physics path still only produces bowled and caught.** The sim has
+   five dismissals. A season's stats will show the difference.
+3. **Fielders do not move on screen**, and deep point and third man are
    behind the camera. Left-handers do not exist. There is no keeper.
-5. **The menu scenes are still Phaser text on a 1280x720 frame**, zoomed to
+4. **The menu scenes are still Phaser text on a 1280x720 frame**, zoomed to
    fit. They work and they fill the window, but they are not on the design
-   system; the strip and the cards are. Moving them to the DOM layer is the
-   obvious next UI step.
-6. **No sound, no touch, no deploy, no season history.** M5.
-7. **Franchise names are not trademark-cleared.** Before anything ships.
+   system; the strip, the cards and the innings replay are. Moving them to
+   the DOM layer is the obvious next UI step.
+5. **No sound, no touch, no deploy, no season history.** M5.
+6. **Franchise names are not trademark-cleared.** Before anything ships.
 
 ### What is next
 
 In order, with the reasoning in *Next steps* below:
 
-1. `src/sim/bridge.ts` and the two-path comparison through the harness.
-2. Power and technique into `contactDamping` and the hitting zone.
-3. A live scorecard for the simulated innings.
-4. Fielders who move to the ball; a keeper; left-handers.
-5. The team and season screens onto the design system, in the DOM.
-6. M5: sound, touch, deploy, season history.
+1. Decide what to do with the two-path gap (see *What is left*), then lbw
+   and run-outs on the physics path so the dismissal mix matches.
+2. Fielders who move to the ball; a keeper; left-handers.
+3. The team and season screens onto the design system, in the DOM.
+4. M5: sound, touch, deploy, season history.
 
 ## Goal
 
@@ -148,16 +158,17 @@ model bats theirs, and the table adds up. A shot has a direction, the field
 has a shape, the two decide the runs together, and the ground is a stadium
 seen through a camera.
 
-The two halves have met at the *delivery* and at the *squad*: the scene renders
-a `Delivery` the model produced, bowled by a franchise's real six with the
-sim's own rotation rule. They have still not met at the *outcome* — a human's
-shot does not flow back through `resolveShot`, and `Outcome.shot` is left
-undefined on the physics path. That is phase 4, and it is the next thing.
+The two halves have met at the *delivery*, at the *squad*, and now at the
+*outcome*: `bridge.ts` attaches the shot a human played to the judged ball,
+and `tests/bridge.test.ts` plays the same deliveries through both paths and
+compares them. They agree in aggregate to within 17% on runs a ball and two
+points on wickets, and they disagree in an interesting way about how much an
+attack costs; see *What is left*.
 
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 150 passing (`npm test`), ~2s, no browser. Includes 9 that play the real Matter world headlessly, 12 on the camera (4 on the viewport scaling), 12 on the season |
+| Tests | 160 passing (`npm test`), ~3s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
 | Source | ~5,950 lines across 31 files in `src/` (plus ~430 of CSS); ~2,150 across 13 in `tests/` |
@@ -289,6 +300,15 @@ compromises live in one file, and now every Matter body too.
   and now the batting order (who is on strike, each man's runs and balls,
   how he got out), a target and what is still required, and a `summary` in
   the shape the result and the table read
+
+**The bridge**
+
+- `src/sim/bridge.ts` -- pure. `shotFromPlay` (stance key and swing effort
+  to a `Shot`), `bridge` (attach it to a judged `Outcome`; a dismissal gains
+  the read), `readOf`. Effort thresholds `DEFEND_BELOW` 0.30 and
+  `ATTACK_FROM` 0.72 were set from the harness's effort quantiles
+- `src/game/hud/inningsView.ts` -- their innings replayed from the
+  `BallEvent` log, paced like a broadcast, with the moments
 
 **The seam**
 
@@ -681,6 +701,22 @@ side, a collar, a trim, straps, soles, fingers -- each is two lines of code
 and the sum is a person at 90px. The features are dealt from the player id
 so they are stable; nothing here is an asset, and the repo still has none.
 
+**38. Technique as the width of the blade.** The obvious hitting-zone lever,
+and measured, nothing: contact 85.4% against 85.5% for technique 92 against
+12. Side-on, `BAT_WIDTH` is the blade's *thickness*, and the ball meets the
+face however thick the edge is. Then as the hands (swing response): it moved
+boundaries like a second power and wickets the wrong way, 9.9% against 7.7%,
+because a quicker bat is only a faster bat at contact. Left out; the reasons
+are on `powerFactor` in swing.ts. The general form: **an attribute needs a
+mechanism the physics actually has**, and on this path not getting out is
+the player's own timing.
+
+**39. A first attribute lever that measured half a point.** Power as a
+scale on the *effort term* of `contactDamping` moved boundaries from 17.9%
+to 18.5%, because the random player's median effort is 0.48 and the term
+was already small there. Scaling the whole exit speed instead gave 17.0% to
+21.1%. Trap 14 again: measure the lever's inputs.
+
 **35. Screenshots of an automated tab, a third time -- now for CSS.** The
 Chrome extension's tab throttles `setTimeout` to one-second ticks and does
 not start CSS animations, so every moment appeared not to render and a
@@ -734,13 +770,13 @@ Left-handers. A keeper.
 
 ## Known rough edges
 
-- **A human's shot does not reach the model yet.** `Outcome.shot` is filled by
-  the simulation and left undefined by the physics path. Phase 4.
 - **The physics path still only produces `bowled` and `caught`.** The sim
   produces all five. The two dismissal mixes differ and a season's stats
   will show it.
-- **Your batters are interchangeable at the crease.** Their names, runs and
-  dismissals are tracked; their attributes are not consulted. See next steps.
+- **No stance is bridged as back foot** -- played from the crease. The
+  physics has already punished it geometrically; this is only the name.
+- **The innings replay's timers are wall-clock** (`setTimeout`), so a
+  backgrounded tab pauses it, which is what you would want.
 - **The bat/ball mass ratio is 32:1** and Matter takes the larger
   restitution, so a dead bat returns the ball hard. `contactDamping()` covers
   it. If the swing ever feels wrong at the *soft* end, look here before the

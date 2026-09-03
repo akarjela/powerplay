@@ -23,6 +23,7 @@ import { Scoreboard } from "../hud/scoreboard";
 import type { ScoreboardModel } from "../hud/scoreboard";
 import { clearMoment, showMoment } from "../hud/moments";
 import { hideCard, showCard } from "../hud/card";
+import { InningsView } from "../hud/inningsView";
 import { reducedMotion } from "../hud/dom";
 import type { Outcome } from "../../sim/types";
 import { countsAsBall, runsAgainstBowler } from "../../sim/types";
@@ -84,7 +85,7 @@ function pickSides(data?: MatchStart): { you: Franchise; them: Franchise } {
   return { you, them };
 }
 
-type Stage = "toss" | "batting" | "result";
+type Stage = "toss" | "watching" | "batting" | "result";
 
 /**
  * A match: a toss, two innings, a result.
@@ -146,6 +147,9 @@ export class MatchScene extends Phaser.Scene {
   private stage: Stage = "toss";
   private youBatFirst = true;
   private theirInnings?: InningsResult;
+  private watching?: InningsView;
+  /** Their first innings has been watched; the toss card now takes guard. */
+  private watched = false;
 
   private bowler?: Bowler;
   private lastBowler: Bowler | null = null;
@@ -189,6 +193,8 @@ export class MatchScene extends Phaser.Scene {
     this.stance = "neutral";
     this.stage = "toss";
     this.theirInnings = undefined;
+    this.watching = undefined;
+    this.watched = false;
   }
 
   create(): void {
@@ -225,6 +231,7 @@ export class MatchScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
       this.crowd?.destroy();
       this.scoreboard.destroy();
+      this.watching?.destroy();
       hideCard();
       clearMoment();
     });
@@ -331,8 +338,7 @@ export class MatchScene extends Phaser.Scene {
     if (!this.youBatFirst) {
       this.theirInnings = simulateInnings(them.squad, you.squad, this.rng);
       this.innings = new HumanInnings(you.squad, this.theirInnings.runs + 1);
-      lines.push({ text: `${them.name} ${scoreline(this.theirInnings)}.` });
-      lines.push({ text: `You need ${this.theirInnings.runs + 1} to win.`, strong: true });
+      lines.push({ text: `${them.name} bat first. Whatever they make, you chase.`, strong: true });
     } else {
       lines.push({ text: `You bat first. ${them.name} will chase whatever you make.`, strong: true });
     }
@@ -341,10 +347,33 @@ export class MatchScene extends Phaser.Scene {
     showCard({
       title: this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`,
       lines,
-      prompt: "Take guard",
+      prompt: this.youBatFirst ? "Take guard" : "Watch their innings",
       colours: you.colours,
     }, () => this.onClick());
     this.renderHud();
+  }
+
+  /**
+   * Their innings, ball by ball, over the ground. The strip is yours and
+   * comes back when it is your turn. `then` runs when the replay ends or is
+   * skipped.
+   */
+  private watch(target: number | undefined, then: () => void): void {
+    const { you, them } = this.sides;
+    this.stage = "watching";
+    hideCard();
+    this.scoreboard.setVisible(false);
+    this.renderHud();
+    this.watching = new InningsView(this.theirInnings!, {
+      batting: { code: them.code, name: them.name, primary: them.colours.primary, secondary: them.colours.secondary },
+      bowling: { code: you.code, name: you.name },
+      target,
+    }, () => {
+      this.watching = undefined;
+      this.scoreboard.setVisible(true);
+      then();
+      this.renderHud();
+    });
   }
 
   private fixtureTitle(): string {
@@ -357,12 +386,29 @@ export class MatchScene extends Phaser.Scene {
 
   private onClick(): void {
     if (this.stage === "toss") {
+      if (!this.youBatFirst && this.theirInnings && !this.watched) {
+        const total = this.theirInnings;
+        this.watch(undefined, () => {
+          this.stage = "toss";
+          showCard({
+            title: `${this.sides.them.name} ${scoreline(total)}`,
+            lines: [{ text: `You need ${total.runs + 1} to win.`, strong: true }],
+            prompt: "Take guard",
+            colours: this.sides.you.colours,
+          }, () => this.onClick());
+          // The next click on the card takes guard rather than re-watching.
+          this.theirInnings = total;
+          this.watched = true;
+        });
+        return;
+      }
       hideCard();
       this.stage = "batting";
       this.scoreboard.say("Move the mouse to swing. Arrow keys commit a foot.");
       this.renderHud();
       return;
     }
+    if (this.stage === "watching") return;
     if (this.stage === "result") {
       this.leave();
       return;
@@ -371,21 +417,24 @@ export class MatchScene extends Phaser.Scene {
     if (!this.ball && !this.awaitingResult) this.bowl();
   }
 
-  /** Your innings is over. The other one happens now if it has not already. */
+  /** Your innings is over. The other one happens now if it has not already, and you watch it. */
   private finishMatch(): void {
     const { you, them } = this.sides;
     const yours: InningsSummary = this.innings.summary;
-    let first: InningsSummary;
-    let second: InningsSummary;
-
     if (this.youBatFirst) {
       this.theirInnings = simulateInnings(them.squad, you.squad, this.rng, { target: yours.runs + 1 });
-      first = yours;
-      second = this.theirInnings;
+      this.watch(yours.runs + 1, () => this.settle());
     } else {
-      first = this.theirInnings!;
-      second = yours;
+      this.settle();
     }
+  }
+
+  /** Both innings are in. The result, and the season if there is one. */
+  private settle(): void {
+    const { you, them } = this.sides;
+    const yours: InningsSummary = this.innings.summary;
+    const first: InningsSummary = this.youBatFirst ? yours : this.theirInnings!;
+    const second: InningsSummary = this.youBatFirst ? this.theirInnings! : yours;
 
     const result = resultOf(first, second);
     const won = result.winner?.id === you.id;
@@ -429,7 +478,9 @@ export class MatchScene extends Phaser.Scene {
 
     const action: ScoreboardModel["action"] = this.stage === "toss"
       ? { label: "Take guard", enabled: true, waiting: true }
-      : this.stage === "result"
+      : this.stage === "watching"
+        ? { label: "Watching", enabled: false, waiting: false }
+        : this.stage === "result"
         ? { label: this.season ? "To the table" : "To the teams", enabled: true, waiting: true }
         : innings.complete
           ? { label: "Innings over", enabled: false, waiting: false }

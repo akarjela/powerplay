@@ -243,6 +243,12 @@ export class Scoreboard {
     this.foot.className = `foot ${m.stance}`;
   }
 
+  /** Off the screen while something else has the floor, and back. */
+  setVisible(visible: boolean): void {
+    this.strip.classList.toggle("is-on", visible);
+    if (!visible) this.call.classList.remove("is-on");
+  }
+
   /** The commentator's line for the last ball. */
   say(text: string, kind: "" | "four" | "six" | "wicket" = "", ms = 1600): void {
     window.clearTimeout(this.callTimer);
