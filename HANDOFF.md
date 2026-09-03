@@ -10,6 +10,72 @@ players have faces. A headless harness plays the actual Matter world in Node,
 which is how the physics was measured. Nothing is mid-edit; the tree is clean
 and every test passes._
 
+## Status at a glance
+
+Read this first; everything below is the detail behind it.
+
+### Done
+
+- **M1 — the bat.** Drag-to-swing on a pinned Matter bat at 240Hz, scale-true
+  distances, a swing that lags the pointer. Timing is the skill.
+- **M2 — the pure simulation.** Ball-by-ball T20 in `src/sim/`, seeded,
+  Phaser-free, calibrated against real IPL aggregates over three generated
+  seasons; the `Outcome` seam shared with the physics path.
+- **Track 1 — playability.** The innings ends, the ball is hittable, the HUD
+  is a broadcast strip.
+- **Track 2, phases 1–3 — shot selection.** Four lengths that pitch where
+  they should, a front/back foot committed on the keys that moves the bat's
+  pivot, footwork in the model.
+- **Track 3 — the second axis.** A bearing for every shot from where the bat
+  met the ball; nine fielders per phase under the powerplay law; catches on
+  the right side of the ground, cut-offs, gaps; wides and no-balls; a wagon
+  wheel; a real perspective camera high and square of the wicket.
+- **M3, the squads half.** Ten fictional franchises with authored elevens,
+  kits and grounds; you bat against their real six, rotated legally; your
+  batting order, strike rotation and scorecard are kept.
+- **A real match.** Toss, two innings, a target when you are put in with the
+  required rate on the strip, the model chasing you when you are not, a
+  result card.
+- **M4 — the season.** Round robin of ten, points table with net run rate,
+  the IPL bracket to a champion, saved in localStorage; your fixtures played,
+  the rest simulated.
+- **An art pass.** People with faces, hair and kit detail; a stadium with
+  tiers, rails, a roof, banners, masts and a crowd of several thousand
+  people, baked to one texture.
+- **A headless harness.** `tests/headless.ts` plays the real Matter world in
+  Node from the scene's own constants. 145 tests in ~2s.
+
+### What is left
+
+Ordered by how much a player would notice.
+
+1. **The bridge (track 2, phase 4).** A human's shot never reaches the model:
+   `Outcome.shot` is undefined on the physics path, so your dismissals are
+   unexplained on the scorecard and nobody has measured whether a human
+   innings and a simulated one value a ball the same way. The season table
+   now sits on both, so this is the most important open item.
+2. **Your batters' attributes do nothing at the crease.** Malhotra and the
+   number eleven swing the same bat. Power and technique should reach the
+   physics.
+3. **You never see their innings.** It is a number on a card. A live,
+   skippable scorecard of the simulated innings would make it a match.
+4. **Fielders do not move on screen**, and deep point and third man are
+   behind the camera. Left-handers do not exist. There is no keeper.
+5. **The crowd cannot react.** It is a texture.
+6. **No sound, no touch, no deploy, no season history.** M5.
+7. **Franchise names are not trademark-cleared.** Before anything ships.
+
+### What is next
+
+In order, with the reasoning in *Next steps* below:
+
+1. `src/sim/bridge.ts` and the two-path comparison through the harness.
+2. Power and technique into `contactDamping` and the hitting zone.
+3. A live scorecard for the simulated innings.
+4. Fielders who move to the ball; a keeper; left-handers.
+5. M5: a reacting crowd (a second baked texture), sound, touch, deploy,
+   season history.
+
 ## Goal
 
 A browser cricket game: **drag-to-swing batting physics, wrapped in a
