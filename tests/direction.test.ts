@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  MAX_BEARING, planDistance, planPosition, project, regionName, relativeToPath, shotBearing,
+  MAX_BEARING, planDistance, planPosition, regionName, relativeToPath, shotBearing,
   travelledBearing,
 } from "../src/game/physics/direction";
 import type { Contact } from "../src/game/physics/direction";
-import { BATTER_X, PX_PER_METRE } from "../src/game/config";
 
 /**
  * The direction model, as arithmetic. Its one physical claim -- that meeting
@@ -96,28 +95,6 @@ describe("the plan", () => {
 
   it("knows how far apart two points are", () => {
     expect(planDistance({ along: 0, across: 0 }, { along: 3, across: 4 })).toBe(5);
-  });
-});
-
-describe("the side-on screen", () => {
-  it("projects the along component honestly and the across as a small cue", () => {
-    const straight = project(40, 0);
-    expect(straight.x).toBeCloseTo(BATTER_X + 40 * PX_PER_METRE);
-    expect(straight.depthY).toBeCloseTo(0);
-
-    // Deep square leg, 58m out, has to stay on the grass below the stands
-    // (95px); deep point, 60m the other way, has to stay above the scoreboard
-    // strip (58px). Those two edges are what the asymmetric cue is for.
-    const leg = project(58, 90);
-    expect(leg.x).toBeCloseTo(BATTER_X);
-    expect(leg.depthY).toBeLessThan(0);
-    expect(Math.abs(leg.depthY)).toBeLessThan(95);
-    expect(leg.scale).toBeLessThan(1);
-
-    const off = project(60, -90);
-    expect(off.depthY).toBeGreaterThan(0);
-    expect(off.depthY).toBeLessThan(58);
-    expect(off.scale).toBeGreaterThan(1);
   });
 });
 

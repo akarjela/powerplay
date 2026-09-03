@@ -1,14 +1,15 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-02, later the same day. M1 and M2 complete, track 2
-through phase 3 of 4, and now **track 3 (the second axis) and the ten
-franchises**. The field is a plan rather than a line: nine men per phase, a
-bearing for every shot read from where the bat met the ball, gaps that pay and
-fielders that cut you off, wides and no-balls that count, and a wagon wheel in
-the corner. You bat for a real franchise against a real attack, rotated by the
-sim's own rule. There is also a headless harness that plays the actual Matter
-world in Node, which is how all of it was measured. Nothing is mid-edit; the
-tree is clean and every test passes._
+_Last updated: 2026-09-03. M1 and M2 complete, track 2 through phase 3 of 4,
+**track 3 (the second axis) in full, and the ten franchises with a screen to
+pick them on**. The field is a plan: nine men per phase, a bearing for every
+shot read from where the bat met the ball, gaps that pay and fielders that cut
+you off, wides and no-balls that count, a wagon wheel in the corner -- and it
+is drawn through a real perspective camera, high and square of the wicket, so
+square leg is far and small and point is near and large. You pick a franchise
+to bat for and one to face, see both elevens, and play against their real six.
+A headless harness plays the actual Matter world in Node, which is how all of
+it was measured. Nothing is mid-edit; the tree is clean and every test passes._
 
 ## Goal
 
@@ -54,10 +55,11 @@ prevent that.
 
 ## Current state
 
-**M1, M2, most of track 2, track 3 in its cheaper form, and the squads half of
-M3 are done.** The game is playable, timing matters, there is something to
-read, and now there is somewhere to *put* it: a shot has a direction, the field
-has a shape, and the two decide the runs together.
+**M1, M2, most of track 2, track 3, and the squads half of M3 are done.** The
+game is playable, timing matters, there is something to read, and there is
+somewhere to *put* it: a shot has a direction, the field has a shape, the two
+decide the runs together, and you can see all of it because the ground is
+drawn through a camera rather than along a line.
 
 The two halves have met at the *delivery* and at the *squad*: the scene renders
 a `Delivery` the model produced, bowled by a franchise's real six with the
@@ -68,10 +70,10 @@ undefined on the physics path. That is phase 4, and it is the next thing.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 120 passing (`npm test`), ~2s, no browser. Includes 9 that play the real Matter world headlessly |
+| Tests | 127 passing (`npm test`), ~2s, no browser. Includes 9 that play the real Matter world headlessly and 8 on the camera |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
-| Dev server | `npm run dev` → http://localhost:5173. `?bat=pun&bowl=hyd` picks the sides |
-| Source | ~3,400 lines across 20 files in `src/`; ~1,800 across 11 in `tests/` |
+| Dev server | `npm run dev` → http://localhost:5173. Opens on the team-select screen; `?bat=pun&bowl=hyd` still works as an override |
+| Source | ~4,100 lines across 22 files in `src/`; ~1,900 across 12 in `tests/` |
 | Node | 20.20.2 locally |
 
 Stack versions, all current as of writing: Phaser 4.2.1, Vite 8.2.2,
@@ -216,16 +218,31 @@ compromises live in one file, and now every Matter body too.
 - `src/data/franchises.ts` — the ten franchises: id, code, city, name,
   ground, colours, and an authored eleven each. `LEAGUE` is the squads alone
 
-**Scene and visuals**
+**The camera**
 
-- `src/game/scenes/MatchScene.ts` — the ball's lifecycle, the franchise pair
-  from the URL, bowler rotation, the field per phase, bearing at contact, the
-  projection, and the radar
+- `src/game/view/camera.ts` — pure. A pinhole camera in world pixels: X along
+  the pitch, Y up, Z across to leg. `project`, `ground`, the physics/plan
+  constructors, and `toPhysicsPlane`, which maps the pointer back onto the
+  bat's plane exactly. `MATCH_CAMERA` is built from `CAMERA` in config.ts. It
+  looks dead level with a shifted principal point -- see failed attempt 30
+  for why it must not tilt
+
+**Scenes and visuals**
+
+- `src/game/scenes/SelectScene.ts` — pick the side you bat for and the side
+  you face; both elevens with rating bars; starts the match with the pair
+- `src/game/scenes/MatchScene.ts` — the ball's lifecycle, bowler rotation,
+  the field per phase, bearing at contact, everything drawn through the
+  camera, and the radar. `init(data)` takes the pair from the select scene;
+  Esc goes back
+- `src/game/visuals/stadium.ts` — the ground as projected shapes: turf disc,
+  mow bands, thirty-yard circle, rope, pitch with worn patches, hoardings, a
+  ring of stands with bays and a roof and a crowd, floodlight towers. Drawn
+  once; the camera does not move
+- `src/game/visuals/figures.ts` — batter and fielders in franchise kits, as
+  containers the scene positions and scales by projection. No labels
 - `src/game/visuals/radar.ts` — the plan view and wagon wheel
-- `src/game/visuals/figures.ts` — `drawFielder` is a scaled container now;
-  `BallSprite` takes the depth-shifted ground line for its shadow
-- `src/game/visuals/stadium.ts` — drawn from `WORLD_LEFT`, behind the batter
-- `src/main.ts` — game config and the dev-only `window.__game` handle
+- `src/main.ts` — game config, the two scenes, the dev-only `window.__game`
 
 **Tests**
 
@@ -235,7 +252,9 @@ compromises live in one file, and now every Matter body too.
 - `tests/physics.test.ts` — 9 tests over the real physics path: the pitch
   ladder, contact rate, direction split, early-to-leg, catch rate, run spread,
   bowled rate, extras, pacing. `MEASURE=1` prints the tables
-- `tests/direction.test.ts` — 14 tests over the direction model as arithmetic
+- `tests/camera.test.ts` — 8 tests: framing, no foreshortening along the
+  pitch, the leg side receding, ball size, exact pointer inversion
+- `tests/direction.test.ts` — 13 tests over the direction model as arithmetic
 - `tests/field.test.ts` — 27 tests: the field settings and the powerplay law,
   scoring with a plan, cut-offs, catches on the right side of the ground,
   rolling, and the judge including wides, no-balls and balls hit behind
@@ -490,6 +509,31 @@ crawling. Nothing was wrong. Driving `window.__game` with `world.step()` and
 `scene.update()` in a loop played twelve balls correctly in one call. Trap #6,
 still live, and the harness exists so nobody has to fall into it again.
 
+**30. Tilting the camera down.** The obvious way to frame a ground from a high
+camera is to point it at the pitch. Do that and the bat's plane tilts away from
+the image plane by the same angle: the swing foreshortens by a few percent,
+verticals converge, and the pointer-to-bat mapping stops being exact -- the
+camera test caught the inversion off by pixels. The camera looks dead level
+and the *frame* is shifted down instead, via `principal` in config, the way a
+shift lens keeps a building's verticals vertical. The plane is then exactly
+parallel, the mapping is a similarity, and the swing is the side-on swing
+scaled by 0.93.
+
+**31. Recommending the broadcast angle.** The first answer to "the players are
+too close" was a true broadcast camera from behind the bowler's arm. That
+puts the swing plane edge-on: the drag-to-swing arc, which is the entire
+mechanic, becomes a foreshortened stub, which is why broadcast-angle cricket
+games use canned shot animations. A high camera square of the wicket gets the
+depth without losing the swing. **Before moving the camera, ask what the
+mechanic looks like from there.**
+
+**32. A depth cue instead of a camera.** Before the camera there was a
+constant -- pixels of vertical offset per metre across -- lifting the leg side
+and lowering the off side on the side-on picture. It put square leg on the
+batter's toes at 0.8 and needed to be asymmetric at 1.5/0.7 to fit between the
+stands and the scoreboard. It was a projection with the perspective taken out,
+and the perspective was the part that mattered.
+
 ## Next steps
 
 The design review's three tracks stand: **read, choose, execute.** Track 1 is
@@ -516,25 +560,22 @@ a human innings and a simulated one value a ball the same way.
    maybe forty lines in `outcome.ts` and would let the radar show both
    innings.
 
-**Track 3, the harder half, if it earns it.** What landed is the broadcast
-compromise: side-on for the batting moment, a plan-view radar for where it
-went, and a depth cue that lifts the leg side and lowers the off side. It is
-honest and it is legible, and it is not 2.5D. Before building depth lanes,
-play ten overs and ask whether the radar is enough. The things a real 2.5D
-view would add — seeing a fielder move to the ball, a square cut travelling
-*toward* you — are feel, not information, and belong with M5.
-
-Cheap follow-ups inside the current shape, in payoff order:
+**Track 3 is done**, harder half included: the ground is a real perspective
+from a high camera square of the wicket, and a square cut runs down the
+screen toward you while a pull recedes. Cheap follow-ups, in payoff order:
 
 - **Fielders who visibly move.** They cut the ball off in the model and stand
   still on screen. A tween toward the interception point on `resolve()` is
   twenty lines and sells the whole system.
-- **Line rendered as depth.** The delivery's `line` is a fact the scene has
-  and does not draw; a leg-side ball could drift up a few pixels on the way
-  in. Small, and it would let a wide look like one.
 - **Left-handers.** Every bearing convention is for a right-hander. A flag on
   `Batter` and a sign flip in `direction.ts` — do it before the squads grow
   handedness by accident.
+- **A wicketkeeper and a bowler figure.** The two people always on a cricket
+  field who are not on this one. The keeper stands at along −2m; the bowler
+  would need a run-up animation, which is M5 feel.
+- **A second camera for the replay.** The camera is one pure object; a
+  broadcast-angle replay of a six (trap 31 does not apply to a replay) is a
+  second `Camera` and a re-render of the recorded flight.
 
 **Then M4 — the tournament.** The franchises exist, `chooseBowler` is
 exported, `netRunRateInnings()` handles the bowled-out rule, and the HUD
@@ -575,15 +616,16 @@ timing window. Skip DRS; skip ball age.
   the call says so, but the figure stands still. The men square of the wicket
   and behind it are off the side-on screen entirely; the radar is where they
   live.
-- **The side-on depth cue is a cue.** 1.5px a metre up on the leg side, 0.7
-  down on the off, chosen so deep square leg stays below the stands and deep
-  point stays above the scoreboard. A ball hit square rises or sinks on the
-  screen while the physics height is also on that axis; the shadow follows
-  the depth-shifted ground line, and that is the only thing telling them
-  apart.
-- **A wide is invisible as a wide.** It is bowled with a collision mask that
-  skips the bat, drawn faint, and called when it passes the keeper. The scene
-  cannot show it *being* wide because there is no sideways at the crease.
+- **Deep point and third man are off-screen.** The camera is on the off side
+  and they are beside or behind it. The radar has them. A wider lens would
+  bring them in at the cost of the ball's size; the numbers in `CAMERA` are
+  the trade as it stands.
+- **A wide is only slightly visible as a wide.** It is drawn 1.4m outside off
+  (a line's across offset is in `LINE_ACROSS` in the scene), bowled through
+  the bat, drawn faint, and called at the keeper. Honest, but small.
+- **The stands are one ring at one radius.** Real grounds are ovals with
+  different stands on each side; this is a circle of 5-degree bays with a
+  roof. It reads as a stadium and not as any particular one.
 - **A ball is judged the moment it is rolling**, from a predicted rest point,
   and the body is removed at once. On screen the ball vanishes mid-roll as
   the call comes up. Broadcast does the same; a player may still want to see
@@ -599,7 +641,8 @@ timing window. Skip DRS; skip ball age.
 - **The sim has no direction**, so the radar shows only your innings and
   `dismissal()` cannot say where the catch was. Phase 4, step 2.
 - **Everything is a right-hander.** Bearings, fields, region names.
-- **The two sides come from a query string.** `?bat=pun&bowl=hyd`. M4.
+- **The select screen picks a pair, not a season.** It is the front door M4
+  will replace with a fixture list; the `?bat=&bowl=` override still works.
 - **Running between the wickets is not simulated.** Distance and whether a
   fielder got to it stand in for it.
 - **The crowd is drawn with `Math.random`.** Fine — decoration. Nothing feeding
@@ -620,11 +663,12 @@ timing window. Skip DRS; skip ball age.
 ```bash
 npm install
 npm run dev              # http://localhost:5173  (?bat=pun&bowl=hyd to pick sides)
-npm test                 # 120 tests, no browser, ~2s
+npm test                 # 127 tests, no browser, ~2s
 MEASURE=1 npm test       # the same, printing every measured table
 npm run build
 ```
 
-Click to face a delivery. Move the mouse to swing. Left/right (or A/D) for
-back and front foot. The radar top right is where the shot went.
+Pick the side you bat for and the side you face. Click to face a delivery.
+Move the mouse to swing. Left/right (or A/D) for back and front foot. Esc
+returns to the teams. The radar top right is where the shot went.
 

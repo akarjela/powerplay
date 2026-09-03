@@ -10,8 +10,8 @@ part that makes you keep playing.
 
 **Status: M1 and M2 done, M3 half done.** The batting works, the simulation
 resolves a full T20 headlessly, the field is a real nine-man plan with a leg
-side and an off side, and you bat for one of ten fictional franchises against
-another's real attack. The tournament is not built yet — see the milestones
+side and an off side drawn through a perspective camera, and you pick one of
+ten fictional franchises to bat for and another to face. The tournament is not built yet — see the milestones
 below, and `HANDOFF.md` for the state in detail.
 
 Swing timing is the whole game: mistime it and the bat has already stopped, so
@@ -20,11 +20,11 @@ you dribble it 8m. Time it and you clear the rope.
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # 120 tests, no browser
+npm test        # 127 tests, no browser
 ```
 
-Click to face a delivery, move the mouse to swing, arrow keys to pick a foot.
-`?bat=pun&bowl=hyd` on the URL picks the sides.
+Pick your side and theirs, then click to face a delivery, move the mouse to
+swing, arrow keys to pick a foot. Esc goes back to the teams.
 
 ## The architecture, in one rule
 
@@ -117,7 +117,9 @@ likenesses are licensed, and this is meant to be publishable.
 | `src/game/physics/bat.ts` | The pivot constraint and swing controller |
 | `src/game/physics/direction.ts` | Pure. The second axis: bearing, plan, projection |
 | `src/game/physics/field.ts` | Pure. Nine-man fields, reach, rolling, and the judge |
+| `src/game/view/camera.ts` | Pure. The perspective camera the ground is drawn through |
 | `src/data/franchises.ts` | The ten franchises and their elevens |
+| `src/game/scenes/SelectScene.ts` | Pick the sides, see both elevens |
 | `src/game/scenes/MatchScene.ts` | Rendering and the ball's lifecycle |
 | `tests/headless.ts` | The real Matter world, played in Node |
 | `tests/` | Vitest, no browser |

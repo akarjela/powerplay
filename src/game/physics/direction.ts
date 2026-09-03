@@ -1,4 +1,3 @@
-import { BATTER_X, DEPTH_PX_PER_METRE, PX_PER_METRE } from "../config";
 import type { Length, Line } from "../../sim/delivery";
 
 /**
@@ -147,26 +146,6 @@ export function relativeToPath(point: PlanPoint, bearing: Bearing): { offLine: n
   return {
     alongLine: point.along * dirAlong + point.across * dirAcross,
     offLine: Math.abs(point.across * dirAlong - point.along * dirAcross),
-  };
-}
-
-// -- the side-on screen ------------------------------------------------------
-
-/**
- * Where the side-on view draws something that sits at a bearing.
- *
- * The horizontal position is the honest projection -- the along component, in
- * field scale. The vertical is a *cue*: things to the leg side drift up toward
- * the stands, things to the off side down toward the camera. Small on purpose
- * (see DEPTH_PX_PER_METRE in config) because the same axis carries height.
- */
-export function project(distanceM: number, bearing: Bearing): { x: number; depthY: number; scale: number } {
-  const { along, across } = planPosition(distanceM, bearing);
-  return {
-    x: BATTER_X + along * PX_PER_METRE,
-    depthY: across >= 0 ? -across * DEPTH_PX_PER_METRE.leg : -across * DEPTH_PX_PER_METRE.off,
-    // Further into the picture reads smaller; nearer the camera, a touch larger.
-    scale: across >= 0 ? 1 - 0.28 * Math.min(1, across / 68) : 1 + 0.12 * Math.min(1, -across / 68),
   };
 }
 

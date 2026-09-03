@@ -3,6 +3,7 @@ import Phaser from "phaser";
 import { BAT_BODY, BAT_CATEGORY, BAT_LENGTH, BAT_WIDTH } from "../config";
 import type { Stance } from "../config";
 import { nextAngularVelocity, settlePivot, swingTarget } from "./swing";
+import type { Point } from "./swing";
 
 /**
  * The bat: a rigid body pinned at the handle, driven toward the pointer.
@@ -81,10 +82,14 @@ export class Bat {
     return this.pivot;
   }
 
-  /** One step of the swing controller. See `swing.ts` for why it is shaped this way. */
-  update(pointer: Phaser.Input.Pointer): void {
+  /**
+   * One step of the swing controller. See `swing.ts` for why it is shaped this
+   * way. `pointer` is in the physics plane -- the scene maps the screen
+   * pointer back through the camera before calling this.
+   */
+  update(pointer: Point): void {
     settlePivot(this.pivot, this.home, this.stance);
-    const target = swingTarget({ x: pointer.worldX, y: pointer.worldY }, this.pivot);
+    const target = swingTarget(pointer, this.pivot);
     this.scene.matter.body.setAngularVelocity(
       this.body,
       nextAngularVelocity(this.body.angle, this.body.angularVelocity, target),

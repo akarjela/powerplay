@@ -2,6 +2,7 @@ import Phaser from "phaser";
 
 import { CANVAS, GRAVITY_Y, PHYSICS_FPS } from "./game/config";
 import { MatchScene } from "./game/scenes/MatchScene";
+import { SelectScene } from "./game/scenes/SelectScene";
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -21,7 +22,7 @@ const game = new Phaser.Game({
     },
   },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [MatchScene],
+  scene: [SelectScene, MatchScene],
 });
 
 // Dev-only handle so the running simulation can be measured from the console.

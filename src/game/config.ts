@@ -78,8 +78,6 @@ export const GROUND_Y = 600;
 export const HORIZON_Y = GROUND_Y - 95;
 export const BATTER_X = 160;
 export const BOWLER_X = BATTER_X + PITCH_LENGTH;
-/** How far the camera may travel before the boundary leaves the frame. */
-export const MAX_SCROLL = BATTER_X + BOUNDARY + 120 - CANVAS.width;
 /**
  * The simulated volume runs from here to WORLD_WIDTH. It used to start at the
  * left edge of the canvas, which was fine while every shot went forward; a
@@ -144,23 +142,44 @@ export const AIR_DRAG_PER_FRAME = 1 - BALL_BODY.frictionAir;
 export const BAT_CATEGORY = 0x0002;
 export const WIDE_BALL_MASK = 0xffffffff & ~BAT_CATEGORY;
 
-// -- the second axis ---------------------------------------------------------
+// -- the camera --------------------------------------------------------------
 
 /**
- * How the side-on view shows depth: pixels of vertical offset per metre the
- * ball or a fielder sits to the leg side (up, toward the stands) or the off
- * side (down, toward the camera).
+ * A real camera, high and square of the wicket on the off side.
  *
- * Deliberately small, and deliberately uneven. The 95px between the player
- * line and the stands has to hold a 68m square boundary on the leg side; the
- * off side has only the 58px above the scoreboard strip. And the same vertical
- * axis already carries the ball's *height*, so the two compete for the eye.
- * The shadow is what tells them apart -- it sits on the depth-shifted ground
- * line -- and the radar in the corner is the honest plan view. This is a cue,
- * not a projection. At 0.8 both ways, square leg and point stood on the
- * batter's toes.
+ * World coordinates are pixels: X along the pitch toward the bowler (the
+ * physics' own x, measured from the striker's stumps), Y up (the physics' y,
+ * flipped), Z across toward the leg side (invented by direction.ts; the
+ * physics has no such axis). The camera sits 80m out on the off side and 24m
+ * up, looking at a point over the pitch, so the pitch runs parallel to the
+ * image plane: the delivery, the bounce and the whole arc of the bat are seen
+ * square-on with no foreshortening, exactly as the side-on game showed them,
+ * scaled by about 0.93. Depth is the leg side. Square leg is genuinely far and
+ * small, point near and large, the rope a curve.
+ *
+ * The side-on view with a vertical "depth cue" that preceded this put square
+ * leg on the batter's toes. A camera is the honest version of that cue.
+ *
+ * It looks dead level and the frame is shifted down instead -- a shift lens,
+ * the way architectural photographs keep verticals vertical. Tilting the
+ * camera down would tilt the bat's plane away from the screen by the same
+ * angle, foreshortening the swing by a few percent and making the pointer
+ * mapping approximate. Level, the plane is exactly parallel: the pointer maps
+ * back onto the bat exactly, and every vertical in the world is vertical on
+ * screen. `principal` is where the optical axis meets the canvas, and it is
+ * the horizon.
+ *
+ * Fixed, not panning: with this focal length the frame runs from 25m behind
+ * the batter to the straight rope at the pitch's depth, so nothing that
+ * matters leaves it. Deep point and third man are behind the camera and are
+ * on the radar only.
  */
-export const DEPTH_PX_PER_METRE = { leg: 1.5, off: 0.7 } as const;
+export const CAMERA = {
+  position: { x: m(24), y: m(24), z: -m(80) },
+  lookAt: { x: m(24), y: m(24), z: 0 },
+  principal: { x: CANVAS.width / 2, y: 118 },
+  focal: 1088,
+} as const;
 
 // -- feel ------------------------------------------------------------------
 
