@@ -77,6 +77,7 @@ export class Bat {
     this.stance = stance;
   }
 
+
   /** Where the pivot currently is, so the batsman can be drawn holding the bat. */
   get pivotPoint(): { x: number; y: number } {
     return this.pivot;

@@ -35,7 +35,8 @@ import type { BowlingLine, InningsResult, InningsSummary } from "../../sim/innin
 import { resultOf, scoreline } from "../../sim/match";
 import { makeRng } from "../../sim/rng";
 import type { Rng } from "../../sim/rng";
-import type { Bowler } from "../../sim/player";
+import type { Batter, Bowler } from "../../sim/player";
+import { unit } from "../../sim/player";
 import { FRANCHISES, franchiseById } from "../../data/franchises";
 import type { Franchise } from "../../data/franchises";
 import { loadSeason, saveSeason } from "../season/store";
@@ -134,6 +135,8 @@ export class MatchScene extends Phaser.Scene {
   private rng: Rng = makeRng("powerplay");
   private delivery?: Delivery;
   private batsman!: Phaser.GameObjects.Container;
+  /** Who is holding the bat. The figure and the blade change with him. */
+  private striker?: Batter;
   private stance: Stance = "neutral";
   private keys!: Record<"front" | "back" | "frontAlt" | "backAlt", Phaser.Input.Keyboard.Key>;
 
@@ -203,10 +206,10 @@ export class MatchScene extends Phaser.Scene {
       ...GROUND_BODY,
     });
 
-    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(this.sides.you.squad.batters[0].id))
-      .setDepth(depthFor(0, 1));
     this.bat = new Bat(this, PIVOT.x, PIVOT.y);
     this.batGfx = makeBat(this).setDepth(depthFor(0, 2));
+    this.striker = undefined;
+    this.takeGuard(this.innings.atTheCrease[0]?.batter ?? this.sides.you.squad.batters[0]);
     this.ballSprite = new BallSprite(this);
     this.radar = new Radar(this, 0, 0, 70);
     this.radar.setField(this.field);
@@ -479,6 +482,21 @@ export class MatchScene extends Phaser.Scene {
     return line;
   }
 
+  // -- the striker ---------------------------------------------------------------
+
+  /**
+   * A batter takes guard: his face and build on the figure, and his power in
+   * the hands (see `contactDamping`). Called for every ball and does nothing
+   * if the same man is still there. Technique is not consulted: on this path
+   * it is the player's own timing and footwork; see swing.ts.
+   */
+  private takeGuard(batter: Batter): void {
+    if (this.striker?.id === batter.id) return;
+    this.striker = batter;
+    this.batsman?.destroy();
+    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(0, 1));
+  }
+
   // -- the field and the attack ------------------------------------------------
 
   private setField(field: Fielder[]): void {
@@ -522,6 +540,8 @@ export class MatchScene extends Phaser.Scene {
     const over = Math.floor(this.innings.balls / BALLS_PER_OVER);
     if (over !== this.currentOver) this.startOver(over);
     const bowler = this.bowler!;
+    const striker = this.innings.atTheCrease[0]?.batter;
+    if (striker) this.takeGuard(striker);
 
     const delivery = bowl(bowler, this.phase, this.rng);
     this.delivery = delivery;
@@ -575,7 +595,7 @@ export class MatchScene extends Phaser.Scene {
 
     if (this.justStruck) {
       this.justStruck = false;
-      const soft = contactDamping(this.contactAngularVelocity);
+      const soft = contactDamping(this.contactAngularVelocity, unit(this.striker?.power ?? 50));
       this.matter.body.setVelocity(ball, { x: ball.velocity.x * soft, y: ball.velocity.y * soft });
     }
     if (this.struck && isRolling(ball.position.y, ball.velocity.y)) {

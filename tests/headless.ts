@@ -56,6 +56,8 @@ export interface Player {
   stance: Stance;
   /** Pointer position in world space, given milliseconds since release. */
   pointer(elapsedMs: number): Point;
+  /** The batter's power, 0..1. Average when absent, which is what every table was measured at. */
+  power?: number;
 }
 
 export interface Played {
@@ -217,7 +219,7 @@ export class Headless {
 
       if (this.struck && !struckBefore && this.contact) {
         struckAtMs = this.elapsedMs;
-        const soft = contactDamping(this.contact.angularVelocity);
+        const soft = contactDamping(this.contact.angularVelocity, player.power ?? 0.5);
         Body.setVelocity(ball, { x: ball.velocity.x * soft, y: ball.velocity.y * soft });
         bearing = shotBearing({
           aheadPx: this.contact.aheadPx,
