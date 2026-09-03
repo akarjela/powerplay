@@ -123,8 +123,10 @@ export function simulateInnings(
   let won = false;
   let lastBowler: Bowler | null = null;
 
+  const oversBowled = (b: Bowler) => Math.floor((bowlLines.get(b.id)?.balls ?? 0) / BALLS_PER_OVER);
+
   for (let over = 0; over < OVERS && wickets < WICKETS && !won; over++) {
-    const bowler = chooseBowler(bowling.bowlers, bowlLines, lastBowler, rng);
+    const bowler = chooseBowler(bowling.bowlers, oversBowled, lastBowler, rng);
     lastBowler = bowler;
     const figures = figuresFor(bowler);
     const phase = phaseOf(over);
@@ -216,14 +218,16 @@ const chargeableToBowler = (dismissal: Dismissal) => dismissal !== "run-out";
  * always be filled. If the rules ever paint us into a corner the consecutive
  * rule yields first, because bowling out of the allocation would be illegal
  * while bowling back-to-back is merely unusual.
+ *
+ * Exported because the scene rotates the attack you face with the same rule:
+ * a human innings and a simulated one must agree on who is allowed to bowl.
  */
-function chooseBowler(
+export function chooseBowler(
   bowlers: Bowler[],
-  figures: Map<string, BowlingLine>,
+  oversBowled: (bowler: Bowler) => number,
   last: Bowler | null,
   rng: Rng,
 ): Bowler {
-  const oversBowled = (b: Bowler) => Math.floor((figures.get(b.id)?.balls ?? 0) / BALLS_PER_OVER);
   const withinAllocation = bowlers.filter((b) => oversBowled(b) < MAX_OVERS_PER_BOWLER);
   const eligible = withinAllocation.filter((b) => b.id !== last?.id);
   const pool = eligible.length > 0 ? eligible : withinAllocation;

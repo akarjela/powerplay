@@ -55,23 +55,37 @@ export function drawBatsman(scene: Phaser.Scene, x: number, handsY: number): Pha
   return c;
 }
 
-/** A fielder, smaller and dimmer so they read as further away. */
-export function drawFielder(scene: Phaser.Scene, x: number, label: string): void {
-  const g = scene.add.graphics().setDepth(2);
-  g.fillStyle(0x0f2d1c, 0.35).fillEllipse(x, GROUND_Y + 2, 26, 7);
+/**
+ * A fielder. Drawn into a container so a field can be cleared and reset when
+ * the phase changes, and scaled by depth: a man on the leg side stands further
+ * into the picture and reads smaller, one on the off side a touch larger.
+ */
+export function drawFielder(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  scale: number,
+  label: string,
+): Phaser.GameObjects.Container {
+  const c = scene.add.container(x, y).setScale(scale).setDepth(y < GROUND_Y ? 2 : 5);
+  const g = scene.add.graphics();
+  g.fillStyle(0x0f2d1c, 0.35).fillEllipse(0, 2, 26, 7);
 
   g.fillStyle(0x1c2534);
-  g.fillRoundedRect(x - 7, GROUND_Y - 26, 5, 26, 2);
-  g.fillRoundedRect(x + 2, GROUND_Y - 26, 5, 26, 2);
-  g.fillStyle(0xdc2626).fillRoundedRect(x - 9, GROUND_Y - 50, 18, 26, 5);
+  g.fillRoundedRect(-7, -26, 5, 26, 2);
+  g.fillRoundedRect(2, -26, 5, 26, 2);
+  g.fillStyle(0xdc2626).fillRoundedRect(-9, -50, 18, 26, 5);
   g.lineStyle(4, 0xdc2626);
-  g.lineBetween(x - 8, GROUND_Y - 44, x - 15, GROUND_Y - 32);
-  g.lineBetween(x + 8, GROUND_Y - 44, x + 15, GROUND_Y - 32);
-  g.fillStyle(0xd9a06b).fillCircle(x, GROUND_Y - 56, 7);
+  g.lineBetween(-8, -44, -15, -32);
+  g.lineBetween(8, -44, 15, -32);
+  g.fillStyle(0xd9a06b).fillCircle(0, -56, 7);
 
-  scene.add.text(x, GROUND_Y - 70, label, {
+  const text = scene.add.text(0, -70, label, {
     fontFamily: "system-ui, sans-serif", fontSize: "10px", color: "#a7d3b4",
-  }).setOrigin(0.5, 1).setDepth(2);
+  }).setOrigin(0.5, 1);
+
+  c.add([g, text]);
+  return c;
 }
 
 /** Stumps: three of them, with bails sitting on top. */
@@ -135,13 +149,23 @@ export class BallSprite {
     }
   }
 
-  update(x: number, y: number): void {
+  /** A wide is drawn faint: it is past you, and the bat will not meet it. */
+  setGhost(ghost: boolean): void {
+    this.gfx.setAlpha(ghost ? 0.45 : 1);
+  }
+
+  /**
+   * `groundY` is where the ground is *under this ball* -- the side-on view
+   * drifts a ball hit square up or down the screen to suggest depth, and the
+   * shadow has to drift with it or the drift reads as height.
+   */
+  update(x: number, y: number, groundY: number = GROUND_Y): void {
     this.gfx.setPosition(x, y);
 
     // Shadow shrinks and fades with height, which is most of what sells the arc.
-    const height = Math.max(0, GROUND_Y - y);
+    const height = Math.max(0, groundY - y);
     const scale = Phaser.Math.Clamp(1 - height / 420, 0.25, 1);
-    this.shadow.setPosition(x, GROUND_Y + 2).setScale(scale, scale).setAlpha(0.4 * scale);
+    this.shadow.setPosition(x, groundY + 2).setScale(scale, scale).setAlpha(0.4 * scale);
 
     this.history.push({ x, y });
     if (this.history.length > 14) this.history.shift();

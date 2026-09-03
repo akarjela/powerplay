@@ -1,10 +1,8 @@
 import Phaser from "phaser";
 
-import {
-  BAT_LENGTH, BAT_WIDTH, MAX_SWING_SPEED, STANCE_OFFSET, STANCE_RESPONSE,
-  SWING_RESPONSE, SWING_SMOOTHING,
-} from "../config";
+import { BAT_BODY, BAT_CATEGORY, BAT_LENGTH, BAT_WIDTH } from "../config";
 import type { Stance } from "../config";
+import { nextAngularVelocity, settlePivot, swingTarget } from "./swing";
 
 /**
  * The bat: a rigid body pinned at the handle, driven toward the pointer.
@@ -28,6 +26,9 @@ import type { Stance } from "../config";
  * it is a live change with no teardown. That is the whole footwork mechanic:
  * back foot lifts the pivot out of a yorker's reach, front foot drops it into
  * one, and neither needs the outcome model's permission.
+ *
+ * The arithmetic of the swing lives in `swing.ts`, shared with the headless
+ * harness; this class is the Phaser wiring around it.
  */
 export class Bat {
   readonly body: MatterJS.BodyType;
@@ -52,17 +53,14 @@ export class Bat {
       BAT_WIDTH,
       BAT_LENGTH,
       {
-        // Heavy relative to the ball so a middled shot transfers energy to the
-        // ball rather than the ball knocking the blade aside.
-        density: 0.05,
-        frictionAir: 0,
-        // A real bat barely rebounds; the ball's own restitution does the work.
-        restitution: 0.35,
+        ...BAT_BODY,
         label: "bat",
         // A batsman holds the bat up. Letting gravity pull the blade down means
         // the swing controller spends its whole budget fighting it, and stalls
         // partway to the pointer -- which is exactly what it used to do.
         ignoreGravity: true,
+        // Its own category, so a wide can be told not to collide with it.
+        collisionFilter: { category: BAT_CATEGORY, mask: 0xffffffff, group: 0 },
       },
     );
 
@@ -83,43 +81,13 @@ export class Bat {
     return this.pivot;
   }
 
-  /**
-   * One step of the swing controller.
-   *
-   * Velocity-targeting rather than torque-summing. The bat aims for an angular
-   * velocity proportional to how far it is from the pointer, capped at
-   * MAX_SWING_SPEED, and eases toward that target rather than snapping to it.
-   *
-   * The cap is what makes the bat feel like an object with weight, and it is
-   * where the skill lives: past a certain angle you simply cannot get there in
-   * time, so a late swing misses. The earlier version summed torque against a
-   * damping term, which sounds equivalent and is not -- with gravity acting on
-   * the blade it had a stall point it could never rotate past.
-   */
+  /** One step of the swing controller. See `swing.ts` for why it is shaped this way. */
   update(pointer: Phaser.Input.Pointer): void {
-    const offset = STANCE_OFFSET[this.stance];
-    this.pivot.x += (this.home.x + offset.x - this.pivot.x) * STANCE_RESPONSE;
-    this.pivot.y += (this.home.y + offset.y - this.pivot.y) * STANCE_RESPONSE;
-
-    const target = Math.atan2(
-      pointer.worldY - this.pivot.y,
-      pointer.worldX - this.pivot.x,
-    ) - Math.PI / 2;
-
-    // Shortest way round: without this the bat takes the long way past 180deg.
-    let error = target - this.body.angle;
-    while (error > Math.PI) error -= Math.PI * 2;
-    while (error < -Math.PI) error += Math.PI * 2;
-
-    const wanted = Phaser.Math.Clamp(
-      error * SWING_RESPONSE,
-      -MAX_SWING_SPEED,
-      MAX_SWING_SPEED,
-    );
-
+    settlePivot(this.pivot, this.home, this.stance);
+    const target = swingTarget({ x: pointer.worldX, y: pointer.worldY }, this.pivot);
     this.scene.matter.body.setAngularVelocity(
       this.body,
-      Phaser.Math.Linear(this.body.angularVelocity, wanted, SWING_SMOOTHING),
+      nextAngularVelocity(this.body.angle, this.body.angularVelocity, target),
     );
   }
 

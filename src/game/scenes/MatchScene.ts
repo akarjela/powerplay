@@ -1,34 +1,31 @@
 import Phaser from "phaser";
 
 import {
-  BALL_RADIUS, BATTER_X, BOUNDARY, BOWLER_X, CANVAS, DELIVERY_SHAPE, GLOVE_LOCAL_X,
-  GROUND_Y, MAX_SCROLL, PIVOT, PX_PER_METRE, STUMP_HEIGHT, STUMP_WIDTH,
-  deliveryAim, kph, m,
+  BALL_BODY, BALL_RADIUS, BATTER_X, BOWLER_X, CANVAS, DELIVERY_SHAPE, GLOVE_LOCAL_X, GROUND_BODY,
+  GROUND_Y, MAX_SCROLL, PIVOT, WIDE_BALL_MASK, WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph,
 } from "../config";
 import type { Stance } from "../config";
 import { Bat } from "../physics/bat";
-import { FIELD, bowled, catchableBy, caught, metresDownfield, resolveGroundedBall } from "../physics/field";
+import { contactDamping } from "../physics/swing";
+import {
+  fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity,
+} from "../physics/field";
+import type { Fielder } from "../physics/field";
+import { project, shotBearing, travelledBearing } from "../physics/direction";
+import type { Bearing } from "../physics/direction";
 import { BallSprite, drawBatsman, drawFielder, drawStumps, makeBat } from "../visuals/figures";
 import { drawStadium } from "../visuals/stadium";
+import { Radar } from "../visuals/radar";
 import type { Outcome } from "../../sim/types";
 import { HumanInnings } from "../humanInnings";
 import { bowl, phaseOf } from "../../sim/delivery";
 import type { Delivery, Phase } from "../../sim/delivery";
-import { BALLS_PER_OVER } from "../../sim/innings";
+import { BALLS_PER_OVER, chooseBowler } from "../../sim/innings";
 import { makeRng } from "../../sim/rng";
 import type { Rng } from "../../sim/rng";
 import type { Bowler } from "../../sim/player";
-
-/**
- * One placeholder bowler until squads land in M3.
- *
- * The attributes are real now, not decorative: `bowl()` in the simulation turns
- * them into a length, a line and a speed, and the scene renders whatever it is
- * handed. So the attack you face already changes with the numbers here.
- */
-const BOWLER: Bowler = {
-  id: "rana", name: "Rana", pace: 62, accuracy: 64, movement: 58, variation: 55,
-};
+import { FRANCHISES, franchiseById } from "../../data/franchises";
+import type { Franchise } from "../../data/franchises";
 
 const STANCE_LABEL: Record<Stance, string> = {
   front: "FRONT FOOT",
@@ -42,38 +39,58 @@ const STANCE_COLOUR: Record<Stance, string> = {
   neutral: "#64748b",
 };
 
-/** Balls settle slowly; stop waiting once it is clearly finished. */
-const SETTLED_SPEED = 0.35;
-
 /**
- * Behind this the ball is the keeper's and the delivery is over.
+ * Which two sides are playing. You bat; they bowl.
  *
- * Without it a play-and-miss took 2.55s to resolve: the ball carried on past
- * the batter, bounced off the left wall of the world and trickled back before
- * `SETTLED_SPEED` was satisfied. That barely mattered while every miss was
- * bowled, and matters a lot now that most misses are not.
+ * Until M4 hands the scene a fixture, the pair comes from the URL --
+ * `?bat=pun&bowl=hyd` -- so every attack in the league can be faced without
+ * editing code. The defaults are the league's most even contest.
  */
-const KEEPER_X = BATTER_X - m(2);
+function pickSides(): { batting: Franchise; bowling: Franchise } {
+  const params = new URLSearchParams(window.location.search);
+  const lookup = (key: string, fallback: Franchise) => {
+    const id = params.get(key);
+    try {
+      return id ? franchiseById(id) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const batting = lookup("bat", FRANCHISES[0]);
+  let bowling = lookup("bowl", FRANCHISES[2]);
+  if (bowling.id === batting.id) bowling = FRANCHISES.find((f) => f.id !== batting.id)!;
+  return { batting, bowling };
+}
 
 export class MatchScene extends Phaser.Scene {
   private bat!: Bat;
   private batGfx!: Phaser.GameObjects.Container;
   private ball?: MatterJS.BodyType;
   private ballSprite!: BallSprite;
+  private radar!: Radar;
 
   private awaitingResult = false;
   private struck = false;
   /**
-   * Has the ball touched the ground *since being hit*?
-   *
-   * This is what decides a catch, and whether a boundary is six or four. There
-   * used to be a `hasBounced` here instead, set when the *delivery* pitched --
-   * which happens before you play at the ball, so it was already true by the
-   * time it could have meant anything. The six-on-the-full check consulted it
-   * and could therefore never fire: the only sixes in the game were yorkers hit
-   * before they landed.
+   * The bat struck the ball during the last physics frame, and the soft-hands
+   * rule has not yet been applied. Matter's solver runs *after* the collision
+   * event, so the damping has to wait for the next rendered frame.
+   */
+  private justStruck = false;
+  private contactAngularVelocity = 0;
+  private struckAt = 0;
+  /**
+   * Has the ball touched the ground *since being hit*? This is what decides a
+   * catch, and whether a boundary is six or four. There used to be a flag set
+   * when the *delivery* pitched, which was already true by the time it could
+   * have meant anything.
    */
   private bouncedAfterStrike = false;
+  /** Radial metres where the struck ball first landed. */
+  private landingM = 0;
+  /** Where the shot went. Zero until the bat says otherwise. */
+  private bearing: Bearing = 0;
+
   private innings = new HumanInnings();
   /** Seeded, so an innings can be replayed. The sim's rule, kept on this side. */
   private rng: Rng = makeRng("powerplay");
@@ -82,6 +99,15 @@ export class MatchScene extends Phaser.Scene {
   private stance: Stance = "neutral";
   private stanceText!: Phaser.GameObjects.Text;
   private keys!: Record<"front" | "back" | "frontAlt" | "backAlt", Phaser.Input.Keyboard.Key>;
+
+  private sides = pickSides();
+  private bowler?: Bowler;
+  private lastBowler: Bowler | null = null;
+  private ballsByBowler = new Map<string, number>();
+  private currentOver = -1;
+  private phase: Phase = "powerplay";
+  private field: Fielder[] = fieldFor("powerplay");
+  private fielders: Phaser.GameObjects.Container[] = [];
 
   private scoreText!: Phaser.GameObjects.Text;
   private rateText!: Phaser.GameObjects.Text;
@@ -94,11 +120,12 @@ export class MatchScene extends Phaser.Scene {
   }
 
   create(): void {
-    const groundWidth = BATTER_X + BOUNDARY + 400;
     // Ceiling and side walls only. The floor is a real body at GROUND_Y, below,
     // because the world bounds sit at the bottom of the whole simulated volume
-    // and the outfield is 400px above that.
-    this.matter.world.setBounds(0, -3000, groundWidth, 4000);
+    // and the outfield is 400px above that. The world starts behind the batter
+    // now, because a glance to fine leg goes that way.
+    const width = WORLD_WIDTH - WORLD_LEFT;
+    this.matter.world.setBounds(WORLD_LEFT, -3000, width, 4000);
 
     /**
      * The outfield, as physics rather than just paint.
@@ -108,16 +135,14 @@ export class MatchScene extends Phaser.Scene {
      * bat's arc -- so the bat cannot touch it at any swing timing, which reads
      * as "the swing is broken" when the swing is fine and the ground is missing.
      */
-    this.matter.add.rectangle(groundWidth / 2, GROUND_Y + 60, groundWidth, 120, {
+    this.matter.add.rectangle(WORLD_LEFT + width / 2, GROUND_Y + 60, width, 120, {
       isStatic: true,
       label: "ground",
-      friction: 0.75,
-      // A cricket ball off a hard pitch keeps a good deal of pace.
-      restitution: 0.42,
+      ...GROUND_BODY,
     });
 
     drawStadium(this);
-    for (const fielder of FIELD) drawFielder(this, BATTER_X + m(fielder.distance), fielder.name);
+    this.setField(fieldFor(this.phase));
     drawStumps(this, BATTER_X);
     drawStumps(this, BOWLER_X);
 
@@ -144,11 +169,25 @@ export class MatchScene extends Phaser.Scene {
     this.matter.world.on("collisionstart", (event: { pairs: { bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }[] }) => {
       for (const pair of event.pairs) {
         const labels = [pair.bodyA.label, pair.bodyB.label];
-        if (!labels.includes("ball")) continue;
+        if (!labels.includes("ball") || !this.ball) continue;
 
-        if (labels.includes("ground") && this.struck) this.bouncedAfterStrike = true;
+        if (labels.includes("ground") && this.struck && !this.bouncedAfterStrike) {
+          this.bouncedAfterStrike = true;
+          this.landingM = Math.abs(metresDownfield(this.ball.position.x));
+        }
         if (labels.includes("bat") && !this.struck) {
           this.struck = true;
+          this.justStruck = true;
+          this.struckAt = this.time.now;
+          this.contactAngularVelocity = this.bat.body.angularVelocity;
+          // Where on the arc the ball was met is the shot's direction. Read it
+          // here, at the step it happened, not a frame later.
+          this.bearing = shotBearing({
+            aheadPx: this.ball.position.x - this.bat.pivotPoint.x,
+            length: this.delivery!.length,
+            line: this.delivery!.line,
+            spray: this.rng.range(-1, 1),
+          });
           this.cameras.main.shake(90, 0.004);
         }
       }
@@ -181,12 +220,14 @@ export class MatchScene extends Phaser.Scene {
   private buildHud(): void {
     const height = 62;
     const top = CANVAS.height - height;
+    const { batting, bowling } = this.sides;
 
     this.add.rectangle(0, top, CANVAS.width, height, 0x08111f, 0.88)
       .setOrigin(0, 0).setScrollFactor(0).setDepth(20);
-    // A colour bar reads as a broadcast graphic and is where the batting
-    // franchise's colours go in M4.
-    this.add.rectangle(0, top, 6, height, 0x38bdf8)
+    // The batting franchise's colours, where a broadcast graphic puts them.
+    this.add.rectangle(0, top, 6, height, batting.colours.primary)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(21);
+    this.add.rectangle(6, top, 3, height, batting.colours.secondary)
       .setOrigin(0, 0).setScrollFactor(0).setDepth(21);
 
     this.scoreText = this.add.text(26, top + 12, "", {
@@ -201,12 +242,12 @@ export class MatchScene extends Phaser.Scene {
       fontFamily: "ui-monospace, Menlo, monospace", fontSize: "20px", color: "#e2e8f0",
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(21);
 
-    this.stanceText = this.add.text(220, top + 20, STANCE_LABEL.neutral, {
+    this.stanceText = this.add.text(330, top + 20, STANCE_LABEL.neutral, {
       fontFamily: "system-ui, sans-serif", fontSize: "15px", color: STANCE_COLOUR.neutral,
       fontStyle: "bold",
     }).setScrollFactor(0).setDepth(21);
 
-    this.add.text(220, top + 40, "\u2190 back    \u2192 front", {
+    this.add.text(330, top + 40, "← back    → front", {
       fontFamily: "system-ui, sans-serif", fontSize: "11px", color: "#64748b",
     }).setScrollFactor(0).setDepth(21);
 
@@ -220,6 +261,13 @@ export class MatchScene extends Phaser.Scene {
       stroke: "#0a1428", strokeThickness: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setAlpha(0);
 
+    // The plan view, top right, out of the way of a lofted six.
+    this.radar = new Radar(this, CANVAS.width - 96, 96, 70);
+    this.radar.setField(this.field);
+    this.add.text(CANVAS.width - 96, 176, `${batting.name} v ${bowling.name}`, {
+      fontFamily: "system-ui, sans-serif", fontSize: "11px", color: "#cbd5e1",
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(31);
+
     this.updateHud("Click to face up. Move the mouse to swing.");
   }
 
@@ -227,26 +275,69 @@ export class MatchScene extends Phaser.Scene {
   private restart(): void {
     this.innings = new HumanInnings();
     this.rng = makeRng("powerplay");
+    this.ballsByBowler.clear();
+    this.lastBowler = null;
+    this.currentOver = -1;
+    this.radar.clearWheel();
     this.updateHud("Click to face up. Move the mouse to swing.");
     this.callText.setAlpha(0);
   }
 
+  /** Swap the nine men on the ground, and on the radar. */
+  private setField(field: Fielder[]): void {
+    this.field = field;
+    for (const gfx of this.fielders) gfx.destroy();
+    this.fielders = field.map((fielder) => {
+      const { x, depthY, scale } = project(fielder.distance, fielder.bearing);
+      return drawFielder(this, x, GROUND_Y + depthY, scale, fielder.name);
+    });
+    this.radar?.setField(field);
+  }
+
+  /**
+   * The start of an over: a new bowler, chosen by the same rule the simulation
+   * uses, and a field for the phase. The attack you face is the opposition's
+   * real six, rotated legally -- four overs each, never two in a row.
+   */
+  private startOver(over: number): void {
+    this.currentOver = over;
+    const phase = phaseOf(over);
+    if (phase !== this.phase) {
+      this.phase = phase;
+      this.setField(fieldFor(phase));
+    }
+    const oversBowled = (b: Bowler) => Math.floor((this.ballsByBowler.get(b.id) ?? 0) / BALLS_PER_OVER);
+    this.bowler = chooseBowler(this.sides.bowling.squad.bowlers, oversBowled, this.lastBowler, this.rng);
+    this.lastBowler = this.bowler;
+  }
+
   private bowl(): void {
     this.struck = false;
+    this.justStruck = false;
     this.bouncedAfterStrike = false;
     this.awaitingResult = false;
+    this.landingM = 0;
+    this.bearing = 0;
 
     const over = Math.floor(this.innings.balls / BALLS_PER_OVER);
-    const delivery = this.nextDelivery(phaseOf(over));
+    if (over !== this.currentOver) this.startOver(over);
+    const bowler = this.bowler!;
+
+    const delivery = bowl(bowler, this.phase, this.rng);
     this.delivery = delivery;
 
     const shape = DELIVERY_SHAPE[delivery.length];
     const ball = this.matter.add.circle(BOWLER_X, GROUND_Y - shape.releaseUp, BALL_RADIUS, {
       restitution: shape.restitution,
-      friction: 0.04,
-      frictionAir: 0.006,
-      density: 0.008,
+      ...BALL_BODY,
       label: "ball",
+      // A wide is a ball the bat cannot reach. The side-on physics has no
+      // sideways to put it, so it is bowled through the blade instead.
+      collisionFilter: {
+        category: 1,
+        mask: delivery.illegal === "wide" ? WIDE_BALL_MASK : 0xffffffff,
+        group: 0,
+      },
     });
 
     const pace = kph(delivery.speed);
@@ -257,28 +348,11 @@ export class MatchScene extends Phaser.Scene {
 
     this.ball = ball;
     this.ballSprite.setVisible(true);
+    this.ballSprite.setGhost(delivery.illegal === "wide");
     // The speed is fair to show -- you can see a quick one coming. The length is
     // not, and is only revealed once the ball has been played.
-    this.updateHud(`${BOWLER.name} in — ${Math.round(delivery.speed)}kph`);
-  }
-
-  /**
-   * A legal delivery.
-   *
-   * The simulation produces wides and no-balls, and this scene cannot yet show
-   * one: the view is purely side-on, so there is no leg side to bowl down, and
-   * a bouncer over the batter's head does not work either -- measured, even at
-   * restitution 0.99 the ball tops out at 69px against a blade that reaches
-   * 114px, so it is always playable and would never be called. Rolling them
-   * away keeps the scene honest about what it can draw, at the cost of a human
-   * innings conceding no extras. Track 3 gives wides somewhere to go.
-   */
-  private nextDelivery(phase: Phase): Delivery {
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const delivery = bowl(BOWLER, phase, this.rng);
-      if (!delivery.illegal) return delivery;
-    }
-    throw new Error("bowl() produced 30 illegal deliveries in a row");
+    const overs = this.ballsByBowler.get(bowler.id) ?? 0;
+    this.updateHud(`${bowler.name} (${Math.floor(overs / BALLS_PER_OVER)}.${overs % BALLS_PER_OVER}) in — ${Math.round(delivery.speed)}kph`);
   }
 
   update(): void {
@@ -296,50 +370,68 @@ export class MatchScene extends Phaser.Scene {
     const ball = this.ball;
     if (!ball) return;
 
-    this.ballSprite.update(ball.position.x, ball.position.y);
-    this.cameras.main.scrollX = Phaser.Math.Clamp(
-      ball.position.x - CANVAS.width * 0.42, 0, MAX_SCROLL,
-    );
-
-
-    /**
-     * The stumps are a box, not a half-plane.
-     *
-     * This used to test `x <= BATTER_X + STUMP_WIDTH` with no lower bound, so
-     * it stayed true for every x behind the stumps too: a ball that passed
-     * safely over them and then dropped as it carried on to the keeper was
-     * scored as bowled, several frames after it had already gone by.
-     */
-    const overTheStumps = Math.abs(ball.position.x - BATTER_X) <= STUMP_WIDTH;
-    if (!this.struck && overTheStumps && ball.position.y > GROUND_Y - STUMP_HEIGHT) {
-      return this.resolve(bowled());
+    // Soft hands, the frame after contact; see contactDamping.
+    if (this.justStruck) {
+      this.justStruck = false;
+      const soft = contactDamping(this.contactAngularVelocity);
+      this.matter.body.setVelocity(ball, { x: ball.velocity.x * soft, y: ball.velocity.y * soft });
+    }
+    // The outfield slows a rolling ball. Matter will not do this on its own.
+    if (this.struck && isRolling(ball.position.y, ball.velocity.y)) {
+      this.matter.body.setVelocity(ball, { x: rollingVelocity(ball.velocity.x), y: ball.velocity.y });
     }
 
-    if (!this.struck && ball.position.x < KEEPER_X) {
-      return this.resolve({ runs: 0, description: "Beaten — through to the keeper." });
-    }
+    this.draw(ball);
+
+    const outcome = judgeBall({
+      x: ball.position.x,
+      y: ball.position.y,
+      vx: ball.velocity.x,
+      vy: ball.velocity.y,
+      struck: this.struck,
+      bouncedAfterStrike: this.bouncedAfterStrike,
+      airborneMs: this.struck ? this.time.now - this.struckAt : 0,
+      bearing: this.bearing,
+      landingM: this.landingM,
+      field: this.field,
+      illegal: this.delivery?.illegal,
+    });
+    if (outcome) this.resolve(outcome);
+  }
+
+  /**
+   * Where the ball is drawn.
+   *
+   * Before the shot the physics position is the picture. After it, the
+   * physics distance is *radial* -- how far from the bat along the bearing --
+   * and the picture is its projection: the along component on the ground line,
+   * the across component as a small drift toward the stands or the camera. The
+   * shadow sits on the drifted ground line, which is what separates depth from
+   * height for the eye; the radar shows the plan outright.
+   */
+  private draw(ball: MatterJS.BodyType): void {
+    const camera = this.cameras.main;
+    let x = ball.position.x;
+    let y = ball.position.y;
+    let groundY = GROUND_Y;
 
     if (this.struck) {
-      const onTheFull = !this.bouncedAfterStrike;
-      const fielder = catchableBy(ball.position.x, ball.position.y, onTheFull);
-      if (fielder && ball.velocity.y > 0) return this.resolve(caught(fielder));
-
-      // Six is "over the rope without bouncing *after the shot*". This used to
-      // read `!this.hasBounced`, which is about the delivery pitching, so the
-      // only sixes in the game were yorkers hit before they landed.
-      if (onTheFull && metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE) {
-        return this.resolve(resolveGroundedBall(ball.position.x, true));
-      }
+      const downfield = metresDownfield(ball.position.x);
+      const bearing = travelledBearing(downfield, this.bearing);
+      const { x: px, depthY } = project(Math.abs(downfield), bearing);
+      x = px;
+      y += depthY;
+      groundY += depthY;
+      this.radar.live(Math.abs(downfield), bearing);
     }
 
-    const speed = Math.hypot(ball.velocity.x, ball.velocity.y);
-    const settled = speed < SETTLED_SPEED && ball.position.y >= GROUND_Y - BALL_RADIUS - 2;
-    const gone = metresDownfield(ball.position.x) >= BOUNDARY / PX_PER_METRE;
+    this.ballSprite.update(x, y, groundY);
 
-    if (settled || gone) {
-      if (!this.struck) return this.resolve({ runs: 0, description: "Beaten, no shot." });
-      return this.resolve(resolveGroundedBall(ball.position.x, false));
-    }
+    // The camera follows the picture, not the physics; it can only go behind
+    // the batter once there is a reason to.
+    const minScroll = this.struck ? WORLD_LEFT : 0;
+    const target = Phaser.Math.Clamp(x - CANVAS.width * 0.42, minScroll, MAX_SCROLL);
+    camera.scrollX += (target - camera.scrollX) * 0.25;
   }
 
   /**
@@ -366,11 +458,21 @@ export class MatchScene extends Phaser.Scene {
     this.awaitingResult = true;
 
     this.innings.record(outcome);
+    if (this.bowler && outcome.extra !== "wide" && outcome.extra !== "no-ball") {
+      this.ballsByBowler.set(this.bowler.id, (this.ballsByBowler.get(this.bowler.id) ?? 0) + 1);
+    }
+
+    if (this.struck && this.ball) {
+      const downfield = metresDownfield(this.ball.position.x);
+      this.radar.trace(Math.abs(downfield), travelledBearing(downfield, this.bearing), outcome);
+    }
+    this.radar.hideBall();
 
     this.announce(outcome);
     const next = this.innings.complete ? "Click to start a new innings" : "Click for the next ball";
     // Naming the length afterwards is how a player learns to read the bounce.
-    this.updateHud(this.delivery ? `${this.delivery.length} length   ·   ${next}` : next);
+    const length = this.delivery && !this.delivery.illegal ? `${this.delivery.length} length   ·   ` : "";
+    this.updateHud(`${length}${next}`);
 
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
@@ -398,8 +500,9 @@ export class MatchScene extends Phaser.Scene {
 
   private updateHud(status: string): void {
     const innings = this.innings;
-    this.scoreText.setText(`${innings.score}   (${innings.oversText})`);
-    this.rateText.setText(`CRR ${innings.runRate.toFixed(2)}`);
+    const { batting, bowling } = this.sides;
+    this.scoreText.setText(`${batting.code}  ${innings.score}   (${innings.oversText})`);
+    this.rateText.setText(`CRR ${innings.runRate.toFixed(2)}    ·    v ${bowling.code}    ·    ${this.phase}`);
     this.overMarks.setText(innings.thisOver.map((ball) => ball.label).join(" "));
     this.statusText.setText(status);
   }

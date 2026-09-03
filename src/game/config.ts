@@ -80,6 +80,87 @@ export const BATTER_X = 160;
 export const BOWLER_X = BATTER_X + PITCH_LENGTH;
 /** How far the camera may travel before the boundary leaves the frame. */
 export const MAX_SCROLL = BATTER_X + BOUNDARY + 120 - CANVAS.width;
+/**
+ * The simulated volume runs from here to WORLD_WIDTH. It used to start at the
+ * left edge of the canvas, which was fine while every shot went forward; a
+ * glance to fine leg goes *behind* the batter, so there has to be ground there
+ * for it to land on and a wall far enough back that it does not rebound into
+ * the frame.
+ */
+export const WORLD_LEFT = -m(45);
+export const WORLD_WIDTH = BATTER_X + BOUNDARY + 400;
+/** Behind this the ball is the keeper's and the delivery is over. */
+export const KEEPER_X = BATTER_X - m(2);
+/** Balls settle slowly; stop waiting once one is clearly finished. */
+export const SETTLED_SPEED = 0.35;
+
+// -- the bodies -------------------------------------------------------------
+
+/**
+ * Every Matter body the game builds, in one place, so the headless harness in
+ * `tests/headless.ts` constructs the *same* world the scene does. Two copies of
+ * these numbers would drift, and a harness that measures a slightly different
+ * game is worse than no harness.
+ *
+ * Real g at this scale is ~78 px/s^2; Matter's `y` is a multiplier on its own
+ * internal step, so GRAVITY_Y is empirical -- tuned so a lofted drive travels a
+ * believable distance.
+ */
+export const GRAVITY_Y = 1.15;
+/** A cricket ball off a hard pitch keeps a good deal of pace. */
+export const GROUND_BODY = { friction: 0.75, restitution: 0.42 } as const;
+export const BALL_BODY = { friction: 0.04, frictionAir: 0.006, density: 0.008 } as const;
+/**
+ * Heavy relative to the ball so a middled shot transfers energy to the ball
+ * rather than the ball knocking the blade aside. A real bat barely rebounds;
+ * the ball's own restitution does the work.
+ */
+export const BAT_BODY = { density: 0.05, restitution: 0.35, frictionAir: 0 } as const;
+
+/**
+ * How hard the outfield slows a rolling ball, metres per second squared.
+ *
+ * Matter has friction and air drag and no rolling resistance, so a struck ball
+ * that stopped bouncing decayed exponentially and, in practice, never stopped:
+ * measured, *every* ground shot that found a gap reached the rope, and the
+ * median shot in a random sweep finished at 68m. The one-line field's catch
+ * rate had been hiding it. A real outfield takes something like 4-6 m/s^2 out
+ * of a ball, but Matter's air drag is already doing most of that here -- at
+ * 20 m/s the `frictionAir` above is worth 7 m/s^2 on its own -- so this is the
+ * remainder, not the whole. Measured: a ball leaving the bat along the ground
+ * at 20 m/s now stops at about 25m. It is applied once a rendered frame, by
+ * the scene and the harness alike, through `rollingVelocity()` in field.ts.
+ */
+export const ROLL_DECEL = 3.5;
+/** Air drag per base frame -- the `frictionAir` above, as the factor Matter applies at 60Hz. */
+export const AIR_DRAG_PER_FRAME = 1 - BALL_BODY.frictionAir;
+/**
+ * The bat's collision category. Everything else is Matter's default (1). A
+ * wide is a ball the batter cannot reach, and the side-on physics has no
+ * sideways to put it -- so it is bowled with a mask that excludes this bit and
+ * passes through the blade. That is the honest rendering of "too wide to
+ * play", short of a third axis.
+ */
+export const BAT_CATEGORY = 0x0002;
+export const WIDE_BALL_MASK = 0xffffffff & ~BAT_CATEGORY;
+
+// -- the second axis ---------------------------------------------------------
+
+/**
+ * How the side-on view shows depth: pixels of vertical offset per metre the
+ * ball or a fielder sits to the leg side (up, toward the stands) or the off
+ * side (down, toward the camera).
+ *
+ * Deliberately small, and deliberately uneven. The 95px between the player
+ * line and the stands has to hold a 68m square boundary on the leg side; the
+ * off side has only the 58px above the scoreboard strip. And the same vertical
+ * axis already carries the ball's *height*, so the two compete for the eye.
+ * The shadow is what tells them apart -- it sits on the depth-shifted ground
+ * line -- and the radar in the corner is the honest plan view. This is a cue,
+ * not a projection. At 0.8 both ways, square leg and point stood on the
+ * batter's toes.
+ */
+export const DEPTH_PX_PER_METRE = { leg: 1.5, off: 0.7 } as const;
 
 // -- feel ------------------------------------------------------------------
 

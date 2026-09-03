@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { BATTER_X, BOUNDARY, BOWLER_X, CANVAS, GROUND_Y, HORIZON_Y, PX_PER_METRE, m } from "../config";
+import { BATTER_X, BOUNDARY, BOWLER_X, CANVAS, GROUND_Y, HORIZON_Y, PX_PER_METRE, WORLD_LEFT, WORLD_WIDTH, m } from "../config";
 
 /**
  * The ground, drawn once into static graphics.
@@ -16,11 +16,13 @@ const GRASS_DARK = 0x1e5c2e;
 const GRASS_LIGHT = 0x27703a;
 
 export function drawStadium(scene: Phaser.Scene): void {
-  const width = BATTER_X + BOUNDARY + 400;
+  // From behind the batter to past the far rope: a shot to fine leg goes
+  // left of the crease, and there has to be a ground there for it to go to.
+  const width = WORLD_WIDTH - WORLD_LEFT;
 
   drawSky(scene, width);
   drawStands(scene, width);
-  drawFloodlights(scene, width);
+  drawFloodlights(scene);
   drawOutfield(scene, width);
   drawPitch(scene);
   drawMarkers(scene);
@@ -39,7 +41,7 @@ function drawSky(scene: Phaser.Scene, width: number): void {
       t * 100,
     );
     g.fillStyle(Phaser.Display.Color.GetColor(colour.r, colour.g, colour.b));
-    g.fillRect(0, (HORIZON_Y / bands) * i, width, HORIZON_Y / bands + 1);
+    g.fillRect(WORLD_LEFT, (HORIZON_Y / bands) * i, width, HORIZON_Y / bands + 1);
   }
 }
 
@@ -48,29 +50,29 @@ function drawStands(scene: Phaser.Scene, width: number): void {
   const standTop = HORIZON_Y - 210;
 
   // Upper tier, then lower, so the lower reads as nearer.
-  g.fillStyle(0x131f3d).fillRect(0, standTop, width, 120);
-  g.fillStyle(0x1a2950).fillRect(0, standTop + 120, width, 90);
+  g.fillStyle(0x131f3d).fillRect(WORLD_LEFT, standTop, width, 120);
+  g.fillStyle(0x1a2950).fillRect(WORLD_LEFT, standTop + 120, width, 90);
 
   // Crowd speckle. Drawn once, so plain randomness is fine -- nothing here
   // feeds the simulation, which is the only thing that has to be reproducible.
   for (let i = 0; i < 2600; i++) {
-    const x = Math.random() * width;
+    const x = WORLD_LEFT + Math.random() * width;
     const y = standTop + 8 + Math.random() * 190;
     const shade = [0xf2c777, 0xe8e3d6, 0xd97b5a, 0x8fb8e0, 0xc4a3d4][Math.floor(Math.random() * 5)];
     g.fillStyle(shade, 0.5 + Math.random() * 0.5).fillRect(x, y, 2, 2);
   }
 
   // Advertising hoardings at the boundary edge.
-  g.fillStyle(0x0d1b2e).fillRect(0, HORIZON_Y - 34, width, 34);
-  for (let x = 0; x < width; x += 190) {
-    g.fillStyle([0x2563eb, 0xdc2626, 0x0f766e][(x / 190) % 3], 0.75);
+  g.fillStyle(0x0d1b2e).fillRect(WORLD_LEFT, HORIZON_Y - 34, width, 34);
+  for (let i = 0, x = WORLD_LEFT; x < WORLD_WIDTH; x += 190, i++) {
+    g.fillStyle([0x2563eb, 0xdc2626, 0x0f766e][i % 3], 0.75);
     g.fillRect(x + 8, HORIZON_Y - 29, 170, 24);
   }
 }
 
-function drawFloodlights(scene: Phaser.Scene, width: number): void {
+function drawFloodlights(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(-95);
-  for (let x = 220; x < width; x += 620) {
+  for (let x = WORLD_LEFT + 220; x < WORLD_WIDTH; x += 620) {
     g.fillStyle(0x0a1428).fillRect(x - 5, HORIZON_Y - 400, 10, 190);
     g.fillStyle(0x16233f).fillRect(x - 46, HORIZON_Y - 430, 92, 40);
     for (let r = 0; r < 2; r++) {
@@ -85,15 +87,15 @@ function drawFloodlights(scene: Phaser.Scene, width: number): void {
 
 function drawOutfield(scene: Phaser.Scene, width: number): void {
   const g = scene.add.graphics().setDepth(-50);
-  g.fillStyle(GRASS_DARK).fillRect(0, HORIZON_Y, width, CANVAS.height);
+  g.fillStyle(GRASS_DARK).fillRect(WORLD_LEFT, HORIZON_Y, width, CANVAS.height);
 
   // Mowing stripes. Real outfields have them and they give the eye something to
   // measure distance against, which a flat green field does not.
-  for (let x = 0; x < width; x += m(6)) {
+  for (let x = WORLD_LEFT; x < WORLD_WIDTH; x += m(6)) {
     g.fillStyle(GRASS_LIGHT, 0.55).fillRect(x, HORIZON_Y, m(3), CANVAS.height);
   }
 
-  g.fillStyle(0x143f22, 0.55).fillRect(0, HORIZON_Y, width, 14);
+  g.fillStyle(0x143f22, 0.55).fillRect(WORLD_LEFT, HORIZON_Y, width, 14);
 
   // The rope.
   const ropeX = BATTER_X + BOUNDARY;
@@ -117,9 +119,10 @@ function drawPitch(scene: Phaser.Scene): void {
 }
 
 function drawMarkers(scene: Phaser.Scene): void {
-  for (let d = 10; d <= 70; d += 10) {
+  for (let d = -40; d <= 70; d += 10) {
+    if (d === 0) continue;
     const x = BATTER_X + d * PX_PER_METRE;
-    scene.add.text(x, GROUND_Y + 30, `${d}m`, {
+    scene.add.text(x, GROUND_Y + 30, `${Math.abs(d)}m`, {
       fontFamily: "system-ui, sans-serif", fontSize: "10px", color: "#7fa889",
     }).setOrigin(0.5, 0).setDepth(-30);
   }

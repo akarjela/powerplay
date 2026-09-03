@@ -8,8 +8,11 @@ which nails the swing and deliberately has nothing behind it — no opponent, no
 consequence, every ball identical to the last. This keeps the bat and adds the
 part that makes you keep playing.
 
-**Status: Milestone 1.** The batting works. Teams, squads and the tournament are
-not built yet — see the milestones below.
+**Status: M1 and M2 done, M3 half done.** The batting works, the simulation
+resolves a full T20 headlessly, the field is a real nine-man plan with a leg
+side and an off side, and you bat for one of ten fictional franchises against
+another's real attack. The tournament is not built yet — see the milestones
+below, and `HANDOFF.md` for the state in detail.
 
 Swing timing is the whole game: mistime it and the bat has already stopped, so
 you dribble it 8m. Time it and you clear the rope.
@@ -17,10 +20,11 @@ you dribble it 8m. Time it and you clear the rope.
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # 11 tests, no browser
+npm test        # 120 tests, no browser
 ```
 
-Click to face a delivery, drag to swing.
+Click to face a delivery, move the mouse to swing, arrow keys to pick a foot.
+`?bat=pun&bowl=hyd` on the URL picks the sides.
 
 ## The architecture, in one rule
 
@@ -89,10 +93,14 @@ deliberate:
 
 - [x] **M1 — the batting feels right.** Matter bat on a pivot, scale-true field,
       fielders, catches, boundaries, live score.
-- [ ] **M2 — the pure sim.** Ball-by-ball model, deterministic under a seed, full
+- [x] **M2 — the pure sim.** Ball-by-ball model, deterministic under a seed, full
       scorecards resolved headlessly.
-- [ ] **M3 — the two halves meet.** Squad data; you bat against a real attack
-      whose attributes change the delivery, your bowling innings simulates.
+- [x] **The field is a plan.** A bearing for every shot from where the bat met
+      the ball, nine fielders per phase under the powerplay law, gaps and
+      cut-offs, wides and no-balls, a wagon wheel.
+- [ ] **M3 — the two halves meet.** Squad data ✓; you bat against a real attack
+      whose attributes change the delivery ✓; a human's shot flows back through
+      the model — not yet.
 - [ ] **M4 — the tournament.** Ten fictional franchises, round robin, IPL playoff
       bracket, points table with net run rate.
 - [ ] **M5 — persistence and polish.**
@@ -107,6 +115,9 @@ likenesses are licensed, and this is meant to be publishable.
 | `src/sim/` | Pure. No Phaser, no DOM. The `Outcome` seam lives here. |
 | `src/game/config.ts` | Every scale decision, including the one compromise |
 | `src/game/physics/bat.ts` | The pivot constraint and swing controller |
-| `src/game/physics/field.ts` | Pure outcome resolution — distances to runs |
+| `src/game/physics/direction.ts` | Pure. The second axis: bearing, plan, projection |
+| `src/game/physics/field.ts` | Pure. Nine-man fields, reach, rolling, and the judge |
+| `src/data/franchises.ts` | The ten franchises and their elevens |
 | `src/game/scenes/MatchScene.ts` | Rendering and the ball's lifecycle |
+| `tests/headless.ts` | The real Matter world, played in Node |
 | `tests/` | Vitest, no browser |
