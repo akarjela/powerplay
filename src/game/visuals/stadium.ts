@@ -3,45 +3,57 @@ import Phaser from "phaser";
 import { BOUNDARY, CANVAS, PITCH_LENGTH, PX_PER_METRE } from "../config";
 import { RING } from "../physics/field";
 import type { Camera, Projected } from "../view/camera";
+import type { Kit } from "./figures";
 
 /**
- * The ground, drawn once through the camera.
+ * The ground, drawn once through the camera and baked into a texture.
  *
  * Everything here is a shape in the world -- a disc of turf, a rectangle of
- * pitch, a ring of stands -- projected point by point and filled. No image
- * assets, no perspective tricks: the rope curves because a projected circle
- * curves. The camera does not move, so this is drawn once and left alone.
+ * pitch, a ring of stands with people in it -- projected point by point and
+ * filled. No image assets: the rope curves because a projected circle curves,
+ * and the crowd is several thousand small people, each a torso and a head,
+ * seated in rows on tiers that recede with the stand. Phaser re-executes a
+ * Graphics object's commands every frame, so all of it is rendered once into
+ * a single texture the size of the canvas and shown as an image. The camera
+ * does not move, so nothing is lost.
  *
- * Colours are a floodlit evening: a warm horizon under a deep sky, two greens
- * in the mow, a pale strip of pitch, navy tiers of seating with a crowd in it.
+ * Colours are a floodlit evening: a deep sky, two greens in the mow, a pale
+ * strip of pitch, seating in blocks under a pale roof, a crowd that leans
+ * toward the home side's colours.
  */
 
-const SKY_TOP = 0x0a1633;
-const SKY_HORIZON = 0x3b4a7a;
-const SKY_GLOW = 0x8a6a4a;
+const SKY_TOP = 0x081330;
+const SKY_HORIZON = 0x2f3d6b;
 const GRASS_DARK = 0x1f6a34;
 const GRASS_LIGHT = 0x2a7f42;
 const APRON = 0x2b5a2c;
 const PITCH = 0xc9b283;
 const PITCH_WORN = 0xb89e6c;
-const TIER_LOWER = 0x4a5578;
-const TIER_UPPER = 0x3a4566;
+const SEAT_A = 0x3f4a70;
+const SEAT_B = 0x35406a;
+const AISLE = 0x262f52;
 const WALKWAY = 0x6b7699;
+const RAIL = 0xc7cde0;
 const ROOF = 0x9aa3ba;
-const ROOF_SHADOW = 0x232c48;
+const ROOF_UNDER = 0x1e2745;
 const HOARDINGS = [0x2563eb, 0xdc2626, 0x0f766e, 0xd97706];
+const SHIRTS = [0xf8fafc, 0xe2e8f0, 0x1e293b, 0x7f1d1d, 0x1d4ed8, 0xf59e0b, 0x0f766e, 0x9333ea, 0xdc2626, 0x111827];
+const SKINS = [0xf1c9a5, 0xe0ac7e, 0xc98e5a, 0xa9703f, 0x8a5a2b, 0x6b4423];
 
 const BOUNDARY_M = BOUNDARY / PX_PER_METRE;
 const PITCH_M = PITCH_LENGTH / PX_PER_METRE;
+const STAND_INNER_M = BOUNDARY_M + 9;
+const STAND_HEIGHT_PX = 26 * PX_PER_METRE;
+const BAY_DEG = 5;
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 
 type Pt = Phaser.Math.Vector2;
 const pt = (x: number, y: number): Pt => new Phaser.Math.Vector2(x, y);
 
-/** Project a ring of ground points; null when any point is behind the camera. */
-function circlePoints(camera: Camera, radiusM: number, from = 0, to = 360, step = 4): Pt[] {
+/** Project a ring of ground points. */
+function circlePoints(camera: Camera, radiusM: number, step = 3): Pt[] {
   const points: Pt[] = [];
-  for (let deg = from; deg <= to; deg += step) {
+  for (let deg = 0; deg <= 360; deg += step) {
     const p = camera.ground(radiusM * Math.cos(toRad(deg)), radiusM * Math.sin(toRad(deg)));
     if (p) points.push(pt(p.sx, p.sy));
   }
@@ -63,173 +75,228 @@ function bandPoints(camera: Camera, radiusM: number, z0: number, z1: number, ste
   return [...front, ...back.reverse()];
 }
 
-export function drawStadium(scene: Phaser.Scene, camera: Camera): void {
-  drawSky(scene);
-  drawStands(scene, camera);
-  drawFloodlights(scene, camera);
-  drawTurf(scene, camera);
-  drawPitch(scene, camera);
-  drawMarkers(scene, camera);
+/** A point on the stand's inner face at a bearing and a height. */
+function standPoint(camera: Camera, deg: number, heightPx: number, radiusM = STAND_INNER_M): Projected | null {
+  return camera.project({
+    x: radiusM * Math.cos(toRad(deg)) * PX_PER_METRE,
+    y: heightPx,
+    z: radiusM * Math.sin(toRad(deg)) * PX_PER_METRE,
+  });
 }
 
-function drawSky(scene: Phaser.Scene): void {
-  const g = scene.add.graphics().setDepth(-100);
-  const bands = 48;
+const lerp = (a: Projected, b: Projected, t: number): Pt => pt(a.sx + (b.sx - a.sx) * t, a.sy + (b.sy - a.sy) * t);
+const lerpP = (a: Projected, b: Projected, t: number): Projected => ({
+  sx: a.sx + (b.sx - a.sx) * t,
+  sy: a.sy + (b.sy - a.sy) * t,
+  scale: a.scale + (b.scale - a.scale) * t,
+  depth: a.depth + (b.depth - a.depth) * t,
+});
+
+/**
+ * Draw the whole ground into one texture and put it on screen. `home` tints
+ * the crowd; a good share of them wear the batting side's colours.
+ */
+export function drawStadium(scene: Phaser.Scene, camera: Camera, home: Kit): void {
+  const key = `stadium-${home.primary.toString(16)}-${home.secondary.toString(16)}`;
+  if (!scene.textures.exists(key)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    drawSky(g);
+    drawStands(g, camera, home);
+    drawFloodlights(g, camera);
+    drawTurf(g, camera);
+    drawPitch(g, camera);
+    g.generateTexture(key, CANVAS.width, CANVAS.height);
+    g.destroy();
+  }
+  scene.add.image(0, 0, key).setOrigin(0).setDepth(-100);
+}
+
+function drawSky(g: Phaser.GameObjects.Graphics): void {
+  const bands = 40;
   const top = Phaser.Display.Color.ValueToColor(SKY_TOP);
   const mid = Phaser.Display.Color.ValueToColor(SKY_HORIZON);
-  const glow = Phaser.Display.Color.ValueToColor(SKY_GLOW);
   for (let i = 0; i < bands; i++) {
-    const t = i / (bands - 1);
-    const c = t < 0.7
-      ? Phaser.Display.Color.Interpolate.ColorWithColor(top, mid, 100, (t / 0.7) * 100)
-      : Phaser.Display.Color.Interpolate.ColorWithColor(mid, glow, 100, ((t - 0.7) / 0.3) * 100);
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(top, mid, bands - 1, i);
     g.fillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b));
     g.fillRect(0, (CANVAS.height / bands) * i, CANVAS.width, CANVAS.height / bands + 1);
   }
+  // A scatter of stars, and a moon low over the far stand.
+  const rng = new Phaser.Math.RandomDataGenerator(["sky"]);
+  for (let i = 0; i < 90; i++) {
+    g.fillStyle(0xffffff, rng.realInRange(0.2, 0.8)).fillCircle(rng.between(0, CANVAS.width), rng.between(0, 90), rng.realInRange(0.5, 1.3));
+  }
+  g.fillStyle(0xf5f0d8, 0.9).fillCircle(980, 46, 14);
+  g.fillStyle(SKY_TOP, 0.9).fillCircle(986, 41, 12);
 }
 
 /**
- * A ring of seating from 78m out, 30m tall, in 5-degree segments. Each
- * segment's inner face is a projected quad; the crowd is a speckle scattered
- * across that quad. Segments behind or beside the camera are skipped.
+ * A ring of seating in 5-degree bays. Each bay's inner face is a projected
+ * quad; on it, rows of seats in two tiers, an aisle at the bay edge, a rail
+ * and a walkway between tiers, a roof with its underside in shadow, and a
+ * crowd -- one small person per seat, sized by the bay's depth, in shirts
+ * of every colour with a run of the home side's among them, some standing,
+ * some with a flag up.
  */
-function drawStands(scene: Phaser.Scene, camera: Camera): void {
-  const g = scene.add.graphics().setDepth(-90);
-  const inner = BOUNDARY_M + 10;
-  const height = 30 * PX_PER_METRE;
-  const rng = Phaser.Math.RND;
+function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit): void {
+  const rng = new Phaser.Math.RandomDataGenerator(["crowd"]);
+  const shirts = [...SHIRTS, home.primary, home.primary, home.secondary];
 
-  const corner = (deg: number, h: number): Projected | null =>
-    camera.project({
-      x: inner * Math.cos(toRad(deg)) * PX_PER_METRE,
-      y: h,
-      z: inner * Math.sin(toRad(deg)) * PX_PER_METRE,
-    });
-
-  // Hoardings first, a metre tall just beyond the rope.
+  // Hoardings, a metre tall just beyond the rope, in blocks of colour.
   for (let deg = 0, i = 0; deg < 360; deg += 6, i++) {
     const r = BOUNDARY_M + 1.5;
-    const a = camera.project({ x: r * Math.cos(toRad(deg)) * PX_PER_METRE, y: 0, z: r * Math.sin(toRad(deg)) * PX_PER_METRE });
-    const b = camera.project({ x: r * Math.cos(toRad(deg + 6)) * PX_PER_METRE, y: 0, z: r * Math.sin(toRad(deg + 6)) * PX_PER_METRE });
-    const at = camera.project({ x: r * Math.cos(toRad(deg)) * PX_PER_METRE, y: 1.2 * PX_PER_METRE, z: r * Math.sin(toRad(deg)) * PX_PER_METRE });
-    const bt = camera.project({ x: r * Math.cos(toRad(deg + 6)) * PX_PER_METRE, y: 1.2 * PX_PER_METRE, z: r * Math.sin(toRad(deg + 6)) * PX_PER_METRE });
+    const a = standPoint(camera, deg, 0, r);
+    const b = standPoint(camera, deg + 6, 0, r);
+    const at = standPoint(camera, deg, 1.1 * PX_PER_METRE, r);
+    const bt = standPoint(camera, deg + 6, 1.1 * PX_PER_METRE, r);
     if (!a || !b || !at || !bt || a.depth < 300) continue;
-    g.fillStyle(HOARDINGS[i % HOARDINGS.length], 0.85);
+    g.fillStyle(HOARDINGS[i % HOARDINGS.length], 0.9);
     g.fillPoints([pt(a.sx, a.sy), pt(b.sx, b.sy), pt(bt.sx, bt.sy), pt(at.sx, at.sy)], true);
+    g.fillStyle(0xffffff, 0.75).fillPoints([lerp(a, b, 0.2), lerp(a, b, 0.8), lerp(at, bt, 0.8), lerp(at, bt, 0.2)].map((p) => pt(p.x, p.y + (at.sy - a.sy) * 0.3)), true);
   }
 
-  for (let deg = 0; deg < 360; deg += 5) {
-    const bl = corner(deg, 0);
-    const br = corner(deg + 5, 0);
-    const tl = corner(deg, height);
-    const tr = corner(deg + 5, height);
+  for (let deg = 0; deg < 360; deg += BAY_DEG) {
+    const bl = standPoint(camera, deg, 0);
+    const br = standPoint(camera, deg + BAY_DEG, 0);
+    const tl = standPoint(camera, deg, STAND_HEIGHT_PX);
+    const tr = standPoint(camera, deg + BAY_DEG, STAND_HEIGHT_PX);
     if (!bl || !br || !tl || !tr || bl.depth < 300) continue;
-    const onScreen = [bl, br, tl, tr].some((p) => p.sx > -100 && p.sx < CANVAS.width + 100);
-    if (!onScreen) continue;
+    if (![bl, br, tl, tr].some((p) => p.sx > -120 && p.sx < CANVAS.width + 120)) continue;
 
-    const lerp = (a: Projected, b: Projected, t: number): Pt => pt(a.sx + (b.sx - a.sx) * t, a.sy + (b.sy - a.sy) * t);
-    // Lower tier, walkway, upper tier, a shadow under the roof and the roof
-    // edge, as stacked quads. Alternate bays a shade apart so the ring reads
-    // as seating blocks rather than one band.
-    const bay = (deg / 5) % 2 === 0 ? 0 : 0x0a0c14;
-    const tiers: [number, number, number][] = [
-      [0, 0.40, TIER_LOWER - bay], [0.40, 0.46, WALKWAY], [0.46, 0.88, TIER_UPPER - bay],
-      [0.88, 0.94, ROOF_SHADOW], [0.94, 1, ROOF],
+    const quad = (t0: number, t1: number, u0 = 0, u1 = 1): Pt[] => [
+      lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t0),
+      lerp(lerpP(bl, br, u1), lerpP(tl, tr, u1), t0),
+      lerp(lerpP(bl, br, u1), lerpP(tl, tr, u1), t1),
+      lerp(lerpP(bl, br, u0), lerpP(tl, tr, u0), t1),
     ];
-    for (const [t0, t1, colour] of tiers) {
-      const p0 = lerp(bl, tl, t0);
-      const p1 = lerp(br, tr, t0);
-      const p2 = lerp(br, tr, t1);
-      const p3 = lerp(bl, tl, t1);
-      g.fillStyle(colour).fillPoints([p0, p1, p2, p3], true);
+
+    const bay = (deg / BAY_DEG) % 2 === 0;
+    // Front wall, lower tier seats, walkway, upper tier seats, roof shadow, roof.
+    g.fillStyle(0x2a3357).fillPoints(quad(0, 0.06), true);
+    g.fillStyle(bay ? SEAT_A : SEAT_B).fillPoints(quad(0.06, 0.44), true);
+    g.fillStyle(WALKWAY).fillPoints(quad(0.44, 0.49), true);
+    g.fillStyle(bay ? SEAT_B : SEAT_A).fillPoints(quad(0.49, 0.86), true);
+    g.fillStyle(ROOF_UNDER).fillPoints(quad(0.86, 0.94), true);
+    g.fillStyle(ROOF).fillPoints(quad(0.94, 1.0), true);
+    // Aisle down the bay edge, and a rail along the front and the walkway.
+    g.fillStyle(AISLE).fillPoints(quad(0.06, 0.86, 0, 0.07), true);
+    g.lineStyle(Math.max(1, 1.6 * bl.scale), RAIL, 0.9);
+    g.strokePoints([lerp(bl, tl, 0.06), lerp(br, tr, 0.06)], false);
+    g.strokePoints([lerp(bl, tl, 0.49), lerp(br, tr, 0.49)], false);
+    // Seat rows, faint.
+    g.lineStyle(1, 0x1f2747, 0.5);
+    for (const t of [0.14, 0.22, 0.30, 0.38, 0.57, 0.65, 0.73, 0.81]) {
+      g.strokePoints([lerp(bl, tl, t), lerp(br, tr, t)], false);
     }
-    // The crowd: dots scattered over both tiers, denser and larger nearer.
-    const dots = Math.round(22 * Math.min(1.6, 1400 / bl.depth));
-    for (let i = 0; i < dots; i++) {
-      const u = rng.frac();
-      const v = rng.frac() < 0.45 ? rng.realInRange(0.03, 0.38) : rng.realInRange(0.48, 0.86);
-      const bottom = lerp(bl, br, u);
-      const top = lerp(tl, tr, u);
-      const x = bottom.x + (top.x - bottom.x) * v;
-      const y = bottom.y + (top.y - bottom.y) * v;
-      const shade = [0xf2c777, 0xe8e3d6, 0xd97b5a, 0x8fb8e0, 0xc4a3d4, 0xf59e0b, 0x1e293b, 0x7f1d1d][rng.integerInRange(0, 7)];
-      const size = Math.max(1.4, 3 * bl.scale * 1.4);
-      g.fillStyle(shade, 0.6 + rng.frac() * 0.4).fillRect(x, y, size, size);
+
+    // The crowd. Seat pitch ~0.85m: a bay of 7.6m holds nine across.
+    const s = bl.scale;
+    const across = 9;
+    const rows: number[] = [0.10, 0.17, 0.24, 0.31, 0.38, 0.53, 0.60, 0.67, 0.74, 0.81];
+    const homeBay = rng.frac() < 0.3;
+    for (const v of rows) {
+      for (let k = 0; k < across; k++) {
+        if (rng.frac() < 0.08) continue; // an empty seat
+        const u = 0.1 + (k + 0.5 + rng.realInRange(-0.2, 0.2)) / across * 0.88;
+        const base = lerp(lerpP(bl, br, u), lerpP(tl, tr, u), v);
+        const standing = rng.frac() < 0.12;
+        const h = (standing ? 20 : 13) * s;
+        const w = 10 * s;
+        const shirt = homeBay && rng.frac() < 0.6 ? (rng.frac() < 0.7 ? home.primary : home.secondary) : shirts[rng.between(0, shirts.length - 1)];
+        g.fillStyle(shirt, 0.95).fillRoundedRect(base.x - w / 2, base.y - h, w, h, w * 0.3);
+        const skin = SKINS[rng.between(0, SKINS.length - 1)];
+        g.fillStyle(skin).fillCircle(base.x, base.y - h - 3 * s, 3.4 * s);
+        g.fillStyle(0x1a1210, 0.9).fillEllipse(base.x, base.y - h - 4.4 * s, 6.4 * s, 3 * s);
+        if (standing && rng.frac() < 0.5) {
+          // An arm up, and sometimes a flag in it.
+          g.lineStyle(2.2 * s, skin).lineBetween(base.x + w * 0.4, base.y - h * 0.8, base.x + w * 0.9, base.y - h - 10 * s);
+          if (rng.frac() < 0.6) {
+            g.fillStyle(rng.frac() < 0.7 ? home.primary : home.secondary, 0.95)
+              .fillTriangle(base.x + w * 0.9, base.y - h - 10 * s, base.x + w * 0.9 + 12 * s, base.y - h - 7 * s, base.x + w * 0.9, base.y - h - 2 * s);
+          }
+        }
+      }
     }
+    // A banner on the front rail of some bays.
+    if (rng.frac() < 0.25) {
+      g.fillStyle(0xf8fafc, 0.9).fillPoints(quad(0.0, 0.055, 0.15, 0.85), true);
+      g.fillStyle(rng.frac() < 0.5 ? home.primary : 0xdc2626, 0.85).fillPoints(quad(0.012, 0.043, 0.2, 0.8), true);
+    }
+  }
+
+  // Roof lights: a run of small lamps along the roof edge.
+  for (let deg = 2.5; deg < 360; deg += BAY_DEG) {
+    const p = standPoint(camera, deg, STAND_HEIGHT_PX * 0.93);
+    if (!p || p.depth < 300 || p.sx < 0 || p.sx > CANVAS.width) continue;
+    g.fillStyle(0xfff6d0, 0.9).fillCircle(p.sx, p.sy, Math.max(1, 2.2 * p.scale));
   }
 }
 
-function drawFloodlights(scene: Phaser.Scene, camera: Camera): void {
-  const g = scene.add.graphics().setDepth(-85);
+function drawFloodlights(g: Phaser.GameObjects.Graphics, camera: Camera): void {
   for (const deg of [42, 138, -42, -138]) {
-    const r = BOUNDARY_M + 26;
-    const base = camera.project({ x: r * Math.cos(toRad(deg)) * PX_PER_METRE, y: 0, z: r * Math.sin(toRad(deg)) * PX_PER_METRE });
-    const top = camera.project({ x: r * Math.cos(toRad(deg)) * PX_PER_METRE, y: 32 * PX_PER_METRE, z: r * Math.sin(toRad(deg)) * PX_PER_METRE });
+    const r = BOUNDARY_M + 24;
+    const base = standPoint(camera, deg, 0, r);
+    const top = standPoint(camera, deg, 32 * PX_PER_METRE, r);
     if (!base || !top || base.depth < 300) continue;
-    const w = Math.max(3, 9 * top.scale);
-    g.fillStyle(0x0a1428).fillRect(top.sx - w / 2, top.sy, w, base.sy - top.sy);
-    const headW = 120 * top.scale;
-    const headH = 50 * top.scale;
+    const w = Math.max(3, 10 * top.scale);
+    // A lattice mast: two legs and cross-braces.
+    g.lineStyle(Math.max(1.5, 3 * top.scale), 0x0a1428, 1);
+    g.lineBetween(top.sx - w, top.sy, base.sx - w * 1.6, base.sy);
+    g.lineBetween(top.sx + w, top.sy, base.sx + w * 1.6, base.sy);
+    for (let i = 1; i < 7; i++) {
+      const t = i / 7;
+      const y = top.sy + (base.sy - top.sy) * t;
+      const half = w + (w * 0.6) * t;
+      g.lineBetween(top.sx - half, y, top.sx + half, y);
+    }
+    const headW = 130 * top.scale;
+    const headH = 48 * top.scale;
     g.fillStyle(0x16233f).fillRect(top.sx - headW / 2, top.sy - headH, headW, headH);
-    for (let row = 0; row < 2; row++) {
-      for (let col = 0; col < 5; col++) {
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 6; col++) {
         g.fillStyle(0xfff6d0, 0.95).fillCircle(
-          top.sx - headW / 2 + headW * (0.14 + col * 0.18),
-          top.sy - headH * (0.7 - row * 0.4),
-          Math.max(1.5, 6 * top.scale),
+          top.sx - headW / 2 + headW * (0.1 + col * 0.16),
+          top.sy - headH * (0.8 - row * 0.3),
+          Math.max(1.5, 5.5 * top.scale),
         );
       }
     }
-    g.fillStyle(0xfff6d0, 0.06).fillCircle(top.sx, top.sy - headH / 2, 110 * top.scale);
+    g.fillStyle(0xfff6d0, 0.05).fillCircle(top.sx, top.sy - headH / 2, 140 * top.scale);
+    g.fillStyle(0xfff6d0, 0.04).fillCircle(top.sx, top.sy - headH / 2, 80 * top.scale);
   }
 }
 
-function drawTurf(scene: Phaser.Scene, camera: Camera): void {
-  const g = scene.add.graphics().setDepth(-50);
-
-  // The apron beyond the rope, then the outfield on top of it.
-  g.fillStyle(APRON).fillPoints(circlePoints(camera, BOUNDARY_M + 10, 0, 360, 3), true);
-  g.fillStyle(GRASS_DARK).fillPoints(circlePoints(camera, BOUNDARY_M, 0, 360, 3), true);
+function drawTurf(g: Phaser.GameObjects.Graphics, camera: Camera): void {
+  g.fillStyle(APRON).fillPoints(circlePoints(camera, BOUNDARY_M + 9), true);
+  g.fillStyle(GRASS_DARK).fillPoints(circlePoints(camera, BOUNDARY_M), true);
 
   // Mowing stripes across the ground, parallel to the pitch.
   for (let z = -BOUNDARY_M; z < BOUNDARY_M; z += 12) {
     const band = bandPoints(camera, BOUNDARY_M, z, Math.min(BOUNDARY_M, z + 6));
     if (band.length > 3) g.fillStyle(GRASS_LIGHT, 0.6).fillPoints(band, true);
   }
+  // Lighter toward the middle where the floodlights concentrate.
+  g.fillStyle(0xffffff, 0.04).fillPoints(circlePoints(camera, 34), true);
 
-  // The thirty-yard circle, faint, and the rope, not faint.
-  const ring = circlePoints(camera, RING, 0, 360, 3);
+  const ring = circlePoints(camera, RING);
   g.lineStyle(1.5, 0xf8fafc, 0.35).strokePoints(ring, true);
-  const rope = circlePoints(camera, BOUNDARY_M, 0, 360, 2);
-  g.lineStyle(4, 0xf8fafc, 0.95).strokePoints(rope, true);
-  // A shadow under the rope so it reads as a rope and not a line.
-  g.lineStyle(2, 0x0f2d1c, 0.35).strokePoints(circlePoints(camera, BOUNDARY_M - 0.4, 0, 360, 2), true);
+  g.lineStyle(2, 0x0f2d1c, 0.35).strokePoints(circlePoints(camera, BOUNDARY_M - 0.4, 2), true);
+  g.lineStyle(4, 0xf8fafc, 0.95).strokePoints(circlePoints(camera, BOUNDARY_M, 2), true);
 }
 
-function drawPitch(scene: Phaser.Scene, camera: Camera): void {
-  const g = scene.add.graphics().setDepth(-40);
+function drawPitch(g: Phaser.GameObjects.Graphics, camera: Camera): void {
   const quad = (x0: number, x1: number, z0: number, z1: number): Pt[] => {
     const corners = [camera.ground(x0, z0), camera.ground(x1, z0), camera.ground(x1, z1), camera.ground(x0, z1)];
     return corners.filter((c): c is Projected => c !== null).map((c) => pt(c.sx, c.sy));
   };
-  // The strip, from behind the striker's crease to behind the bowler's.
   g.fillStyle(PITCH).fillPoints(quad(-2.4, PITCH_M + 2.4, -1.55, 1.55), true);
-  // Worn patches on a good length at each end.
   g.fillStyle(PITCH_WORN, 0.7).fillPoints(quad(5, 9, -0.9, 0.9), true);
   g.fillStyle(PITCH_WORN, 0.7).fillPoints(quad(PITCH_M - 9, PITCH_M - 5, -0.9, 0.9), true);
-  // Creases: popping creases 1.22m in front of each stumps, bowling creases.
+  // Creases.
   g.fillStyle(0xf8fafc, 0.9);
   for (const x of [1.22, PITCH_M - 1.22]) g.fillPoints(quad(x - 0.05, x + 0.05, -1.4, 1.4), true);
   for (const x of [0, PITCH_M]) g.fillPoints(quad(x - 0.04, x + 0.04, -1.32, 1.32), true);
-}
-
-function drawMarkers(scene: Phaser.Scene, camera: Camera): void {
-  for (let d = -20; d <= 60; d += 10) {
-    if (d === 0) continue;
-    const p = camera.ground(d, -4);
-    if (!p) continue;
-    scene.add.text(p.sx, p.sy, `${Math.abs(d)}m`, {
-      fontFamily: "system-ui, sans-serif", fontSize: `${Math.round(11 * p.scale)}px`, color: "#8fbf9a",
-    }).setOrigin(0.5, 0).setAlpha(0.8).setDepth(-30);
+  for (const z of [-1.32, 1.32]) {
+    g.fillPoints(quad(0, 1.22, z - 0.04, z + 0.04), true);
+    g.fillPoints(quad(PITCH_M - 1.22, PITCH_M, z - 0.04, z + 0.04), true);
   }
 }

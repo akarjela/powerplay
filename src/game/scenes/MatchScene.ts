@@ -14,7 +14,7 @@ import type { Fielder } from "../physics/field";
 import { planPosition, shotBearing, travelledBearing } from "../physics/direction";
 import type { Bearing } from "../physics/direction";
 import { Camera, MATCH_CAMERA, depthFor } from "../view/camera";
-import { BallSprite, drawBatsman, drawFielder, drawStumps, makeBat } from "../visuals/figures";
+import { BallSprite, drawBatsman, drawFielder, drawStumps, lookFor, makeBat } from "../visuals/figures";
 import { drawStadium } from "../visuals/stadium";
 import { Radar } from "../visuals/radar";
 import type { Outcome } from "../../sim/types";
@@ -153,13 +153,14 @@ export class MatchScene extends Phaser.Scene {
       ...GROUND_BODY,
     });
 
-    drawStadium(this, this.camera);
+    drawStadium(this, this.camera, this.sides.batting.colours);
     drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y);
     drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y);
     this.setField(fieldFor(this.phase));
 
     // One pivot, two consumers: the figure's hands and the bat's constraint.
-    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.batting.colours).setDepth(depthFor(0, 1));
+    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.batting.colours, lookFor(this.sides.batting.squad.batters[0].id))
+      .setDepth(depthFor(0, 1));
     this.bat = new Bat(this, PIVOT.x, PIVOT.y);
     this.batGfx = makeBat(this).setDepth(depthFor(0, 2));
     this.ballSprite = new BallSprite(this);
@@ -287,14 +288,17 @@ export class MatchScene extends Phaser.Scene {
     this.field = field;
     for (const gfx of this.fielders) gfx.destroy();
     this.fielders = [];
-    for (const fielder of field) {
+    // Each position is manned by one of the eleven, so the same face stands
+    // at mid-off all innings and the men differ from one another.
+    const squad = this.sides.bowling.squad.batters;
+    field.forEach((fielder, i) => {
       const { along, across } = planPosition(fielder.distance, fielder.bearing);
       const p = this.camera.ground(along, across);
-      if (!p || p.sx < -80 || p.sx > CANVAS.width + 80 || p.sy > CANVAS.height + 80) continue;
-      const figure = drawFielder(this, this.sides.bowling.colours)
+      if (!p || p.sx < -80 || p.sx > CANVAS.width + 80 || p.sy > CANVAS.height + 80) return;
+      const figure = drawFielder(this, this.sides.bowling.colours, lookFor(squad[i % squad.length].id))
         .setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(across));
       this.fielders.push(figure);
-    }
+    });
     this.radar?.setField(field);
   }
 
