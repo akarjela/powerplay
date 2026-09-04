@@ -5,8 +5,9 @@ import { fitDesignFrame, paintGround } from "../view/fit";
 import { franchiseById } from "../../data/franchises";
 import { loadSeason, saveSeason, clearSeason } from "../season/store";
 import {
-  champion, involvesYou, isOver, nextFixture, playoffs, recordResult, simulateFixture, standings,
+  champion, fate, involvesYou, isOver, nextFixture, playoffs, recordResult, resultFor, simulateFixture, standings,
 } from "../../sim/tournament";
+import { hideFate, showFate } from "../hud/fateCard";
 import type { Fixture, Season } from "../../sim/tournament";
 import { makeRng } from "../../sim/rng";
 import { oversOf } from "../../sim/innings";
@@ -45,7 +46,37 @@ export class SeasonScene extends Phaser.Scene {
     paintGround(this, 0x08111f);
     this.add.rectangle(0, 0, CANVAS.width, 6, franchiseById(season.you).colours.primary).setOrigin(0);
     this.root = this.add.container(0, 0);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => hideFate());
     this.render();
+    this.tell();
+  }
+
+  /**
+   * The end of your season, once. A trophy if you won it; a card if you were
+   * beaten in the final or knocked out. Remembered on the season so a reload
+   * does not say it again.
+   */
+  private tell(): void {
+    const outcome = fate(this.season);
+    if (!outcome || this.season.told === outcome.kind) return;
+    this.season = { ...this.season, told: outcome.kind };
+    saveSeason(this.season);
+    const you = franchiseById(this.season.you);
+    const beatenBy = (stage: "final" | "eliminator" | "qualifier2") => {
+      const f = playoffs(this.season).find((x) => x.stage === stage);
+      if (!f) return undefined;
+      const other = f.home === this.season.you ? f.away : f.home;
+      return resultFor(this.season, f.id) ? franchiseById(other).name : undefined;
+    };
+    showFate({
+      fate: outcome,
+      team: { name: you.name, primary: you.colours.primary, secondary: you.colours.secondary },
+      by: outcome.kind === "runner-up" ? beatenBy("final") : outcome.kind === "eliminated" && outcome.stage !== "league" ? beatenBy(outcome.stage) : undefined,
+      onClose: () => this.render(),
+      onNewSeason: outcome.kind === "champion" || outcome.kind === "runner-up" || isOver(this.season)
+        ? () => { clearSeason(); this.scene.start("select"); }
+        : undefined,
+    });
   }
 
   private render(): void {
@@ -129,6 +160,7 @@ export class SeasonScene extends Phaser.Scene {
 
     if (yours) {
       this.button(x + 24, y + 186, 180, 44, "PLAY  ▶", 0xfbbf24, "#08111f", () => this.play(fixture));
+      this.button(x + 216, y + 186, 230, 44, "SIMULATE INSTEAD", 0x1e293b, "#e2e8f0", () => this.simulate([fixture]));
     } else {
       this.button(x + 24, y + 186, 180, 44, "SIMULATE", 0x38bdf8, "#08111f", () => this.simulate([fixture]));
       this.button(x + 216, y + 186, 230, 44, "SIM TO MY NEXT MATCH", 0x1e293b, "#e2e8f0", () => this.simulateToYou());
@@ -184,6 +216,7 @@ export class SeasonScene extends Phaser.Scene {
     this.season = season;
     saveSeason(season);
     this.render();
+    this.tell();
   }
 
   private simulateToYou(): void {

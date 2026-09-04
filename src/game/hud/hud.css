@@ -476,3 +476,51 @@
 .innings button.ghost:hover { background: var(--line); }
 .innings button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 @media (max-width: 720px) { .innings .body { grid-template-columns: 1fr; } .innings .col + .col { border-left: 0; border-top: 1px solid var(--line); } }
+
+
+/* ---------------------------------------------------------------- the end of the season */
+
+.scrim.fate { background: rgba(2, 4, 10, 0.72); }
+.fate-card {
+  width: min(640px, 92vw);
+  padding: clamp(24px, 5vh, 44px) clamp(20px, 3vw, 40px) clamp(20px, 3vh, 32px);
+  background: var(--ink-1);
+  border-top: 8px solid var(--flag-primary);
+  box-shadow: inset 0 8px 0 -5px var(--flag-secondary);
+  color: var(--fg);
+  font-family: var(--data);
+  text-align: center;
+  animation: fate-in 320ms var(--ease);
+}
+@keyframes fate-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+.fate-card .eyebrow { font-family: var(--display); font-size: var(--t-big); letter-spacing: 0.14em; color: var(--fg-dim); }
+.fate-card .title { font-family: var(--display); font-size: clamp(40px, 8vh, 72px); line-height: 0.95; margin: 6px 0 12px; }
+.fate-card .line { font-size: clamp(14px, 2.2vh, 19px); color: var(--fg-dim); line-height: 1.5; max-width: 46ch; margin: 0 auto; }
+.fate-card .actions { display: flex; justify-content: center; gap: 10px; margin-top: clamp(18px, 3.5vh, 30px); }
+.fate-card button {
+  pointer-events: auto; cursor: pointer; appearance: none; border: 0; margin: 0;
+  padding: 0 clamp(16px, 2vw, 28px); height: clamp(34px, 5.5vh, 46px);
+  font-family: var(--display); font-size: calc(var(--t-big) * 0.85); letter-spacing: 0.06em;
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+}
+.fate-card button.primary { background: var(--live); color: var(--on-live); }
+.fate-card button.primary:hover { background: #5cf0ff; }
+.fate-card button.ghost { background: var(--ink-2); color: var(--fg); }
+.fate-card button.ghost:hover { background: var(--line); }
+.fate-card button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+.fate-card.champion { border-top-color: var(--milestone); box-shadow: none; background: radial-gradient(ellipse at 50% 0%, rgba(255, 217, 102, 0.18), transparent 60%), var(--ink-1); }
+.fate-card.champion .eyebrow { color: var(--milestone); }
+.fate-card.champion .title { color: var(--fg); }
+.fate-card.champion button.primary { background: var(--milestone); color: #1a1200; }
+.fate-card.champion button.primary:hover { background: #ffe58a; }
+.fate-card .trophy { width: clamp(90px, 18vh, 150px); height: auto; display: block; margin: 0 auto 10px; filter: drop-shadow(0 8px 24px rgba(255, 217, 102, 0.35)); animation: trophy-in 700ms var(--ease); }
+@keyframes trophy-in { 0% { opacity: 0; transform: translateY(18px) scale(0.85); } 60% { transform: translateY(-4px) scale(1.03); } 100% { opacity: 1; transform: none; } }
+.fate-card.runner-up { border-top-color: var(--fg-dim); box-shadow: none; }
+.fate-card.eliminated { border-top-color: var(--wicket); box-shadow: none; }
+.fate-card.eliminated .eyebrow { color: var(--wicket); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fate-card, .fate-card .trophy { animation: none; }
+}

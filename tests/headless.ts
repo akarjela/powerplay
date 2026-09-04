@@ -9,7 +9,7 @@ import {
 import type { Stance } from "../src/game/config";
 import { contactDamping, nextAngularVelocity, settlePivot, swingTarget } from "../src/game/physics/swing";
 import type { Point } from "../src/game/physics/swing";
-import { fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity } from "../src/game/physics/field";
+import { fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity, runOut } from "../src/game/physics/field";
 import type { Fielder } from "../src/game/physics/field";
 import { shotBearing } from "../src/game/physics/direction";
 import type { Delivery } from "../src/sim/delivery";
@@ -240,10 +240,11 @@ export class Headless {
         bearing,
         landingM: this.landingM,
         field,
+        padded: player.stance === "front",
         illegal: delivery.illegal,
       });
       if (outcome) {
-        return this.finish(outcome, ball, bearing, heightAtBatPx, effort);
+        return this.finish(runOut(outcome, rng.next()), ball, bearing, heightAtBatPx, effort);
       }
     }
 

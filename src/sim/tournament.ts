@@ -56,6 +56,8 @@ export interface Season {
   you: string;
   league: Fixture[];
   results: Played[];
+  /** The fate popup already shown, so it is shown once. Optional: older saves lack it. */
+  told?: Fate["kind"];
 }
 
 export interface Standing {
@@ -112,7 +114,7 @@ export function recordResult(season: Season, played: Played): Season {
   return { ...season, results: [...season.results, played] };
 }
 
-const resultFor = (season: Season, fixtureId: string) => season.results.find((r) => r.fixtureId === fixtureId);
+export const resultFor = (season: Season, fixtureId: string) => season.results.find((r) => r.fixtureId === fixtureId);
 
 /** The league table: points, then net run rate, then wins. */
 export function standings(season: Season): Standing[] {
@@ -252,3 +254,35 @@ export function playedFrom(fixture: Fixture, first: InningsSummary, second: Inni
 const lineOf = (innings: InningsSummary): InningsLine => ({
   squad: innings.squad.id, runs: innings.runs, wickets: innings.wickets, balls: innings.balls,
 });
+
+/**
+ * How your season stands, for the popup: champions, runners-up, knocked out
+ * in a playoff, or out at the league stage. Null while you are still in it.
+ */
+export type Fate =
+  | { kind: "champion" }
+  | { kind: "runner-up" }
+  | { kind: "eliminated"; stage: "league" | "eliminator" | "qualifier2"; place: number };
+
+export function fate(season: Season): Fate | null {
+  const you = season.you;
+  const winner = champion(season);
+  if (winner === you) return { kind: "champion" };
+  const place = standings(season).findIndex((s) => s.squad === you) + 1;
+  const bracket = playoffs(season);
+  if (bracket.length === 0) return null;
+
+  const final = bracket.find((f) => f.stage === "final");
+  if (final && (final.home === you || final.away === you)) {
+    return winner ? { kind: "runner-up" } : null;
+  }
+  for (const stage of ["eliminator", "qualifier2"] as const) {
+    const f = bracket.find((x) => x.stage === stage);
+    if (!f || (f.home !== you && f.away !== you)) continue;
+    const played = resultFor(season, f.id);
+    if (played && playoffWinner(season, f, played) !== you) return { kind: "eliminated", stage, place };
+  }
+  const inBracket = bracket.some((f) => f.home === you || f.away === you);
+  if (!inBracket && place > 4) return { kind: "eliminated", stage: "league", place };
+  return null;
+}

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  champion, createSeason, involvesYou, isOver, leagueComplete, nextFixture, playedFrom, playoffs,
-  playoffWinner, recordResult, simulateFixture, standings,
+  champion, createSeason, fate, involvesYou, isOver, leagueComplete, nextFixture, playedFrom, playoffWinner, playoffs, recordResult, resultFor, simulateFixture, standings,
 } from "../src/sim/tournament";
 import type { Played, Season } from "../src/sim/tournament";
 import { LEAGUE, franchiseById } from "../src/data/franchises";
@@ -182,5 +181,47 @@ describe("a whole season", () => {
     const b = playOut(fresh(), "replay");
     expect(a.results.map((r) => r.summary)).toEqual(b.results.map((r) => r.summary));
     expect(champion(a)).toBe(champion(b));
+  });
+});
+
+describe("your fate", () => {
+  function playAll(you: string, seed: string, until?: (s: Season) => boolean): Season {
+    let season = createSeason(IDS, you, seed);
+    for (let guard = 0; guard < 80; guard++) {
+      if (until?.(season)) break;
+      const f = nextFixture(season);
+      if (!f) break;
+      season = recordResult(season, simulateFixture(f, squadById, makeRng(`${seed}:${f.id}`)));
+    }
+    return season;
+  }
+
+  it("is nothing while the league is open", () => {
+    expect(fate(createSeason(IDS, "mum", "fate"))).toBeNull();
+  });
+
+  it("names the champion, the runner-up, and where everyone else went out", () => {
+    const done = playAll("mum", "fate-season");
+    const winner = champion(done)!;
+    expect(fate({ ...done, you: winner })).toEqual({ kind: "champion" });
+    const finalF = playoffs(done).find((f) => f.stage === "final")!;
+    const loser = finalF.home === winner ? finalF.away : finalF.home;
+    expect(fate({ ...done, you: loser })).toEqual({ kind: "runner-up" });
+    const bottom = standings(done)[9].squad;
+    expect(fate({ ...done, you: bottom })).toMatchObject({ kind: "eliminated", stage: "league", place: 10 });
+    const elim = playoffs(done).find((f) => f.stage === "eliminator")!;
+    const elimLoser = playoffWinner(done, elim, resultFor(done, elim.id)!) === elim.home ? elim.away : elim.home;
+    const q2 = playoffs(done).find((f) => f.stage === "qualifier2")!;
+    const q2Loser = playoffWinner(done, q2, resultFor(done, q2.id)!) === q2.home ? q2.away : q2.home;
+    expect(fate({ ...done, you: elimLoser })).toMatchObject({ kind: "eliminated", stage: "eliminator" });
+    expect(fate({ ...done, you: q2Loser })).toMatchObject({ kind: "eliminated", stage: "qualifier2" });
+  });
+
+  it("knows a fifth-placed side is out the moment the league ends", () => {
+    const atLeagueEnd = playAll("mum", "fate-fifth", (s) => leagueComplete(s));
+    const fifth = standings(atLeagueEnd)[4].squad;
+    expect(fate({ ...atLeagueEnd, you: fifth })).toMatchObject({ kind: "eliminated", stage: "league", place: 5 });
+    const fourth = standings(atLeagueEnd)[3].squad;
+    expect(fate({ ...atLeagueEnd, you: fourth })).toBeNull();
   });
 });

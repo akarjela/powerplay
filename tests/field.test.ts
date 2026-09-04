@@ -1,3 +1,4 @@
+import { lbw, runOut, runOutChance } from "../src/game/physics/field";
 import { describe, expect, it } from "vitest";
 
 import { BATTER_X, GROUND_Y, PX_PER_METRE } from "../src/game/config";
@@ -243,5 +244,32 @@ describe("distance mapping", () => {
   it("measures from the striker's stumps", () => {
     expect(metresDownfield(BATTER_X)).toBe(0);
     expect(metresDownfield(atMetres(50))).toBeCloseTo(50);
+  });
+});
+
+describe("lbw and the run-out roll", () => {
+  it("is lbw, not bowled, when the batter is forward and beaten on the stumps", () => {
+    const base = {
+      x: BATTER_X, y: GROUND_Y - 10, vx: -5, vy: 0, struck: false, bouncedAfterStrike: false,
+      airborneMs: 0, bearing: 0 as const, landingM: 0, field: fieldFor("middle"),
+    };
+    expect(judgeBall({ ...base, padded: true })?.wicket).toBe("lbw");
+    expect(judgeBall({ ...base, padded: false })?.wicket).toBe("bowled");
+    expect(judgeBall({ ...base })?.wicket).toBe("bowled");
+    expect(lbw().runs).toBe(0);
+  });
+
+  it("only risks a run-out on a run, and takes the last run back", () => {
+    expect(runOutChance(0)).toBe(0);
+    expect(runOutChance(4)).toBe(0);
+    expect(runOutChance(3)).toBeGreaterThan(runOutChance(2));
+    expect(runOutChance(2)).toBeGreaterThan(runOutChance(1));
+    const two = { runs: 2 as const, description: "two" };
+    expect(runOut(two, 0.999)).toEqual(two);
+    const out = runOut(two, 0);
+    expect(out.wicket).toBe("run-out");
+    expect(out.runs).toBe(1);
+    expect(runOut({ runs: 0, wicket: "bowled", description: "b" }, 0).wicket).toBe("bowled");
+    expect(runOut({ runs: 1, extra: "wide", description: "w" }, 0).wicket).toBeUndefined();
   });
 });

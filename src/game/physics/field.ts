@@ -272,6 +272,44 @@ export function bowled(): Outcome {
   return { runs: 0, wicket: "bowled", description: "Bowled him! Through the gate." };
 }
 
+export function lbw(): Outcome {
+  return { runs: 0, wicket: "lbw", description: "Struck on the pad, and that is plumb. LBW." };
+}
+
+/**
+ * The chance a run is a run-out, per ball, given how many were attempted.
+ *
+ * The physics has no running in it -- the judge says how many a shot was
+ * worth from where it finished -- so a run-out is the one dismissal that
+ * has to be a roll. A single is safe; a two is a call; a three is a risk.
+ * Set so run-outs are about the share of wickets they are on the simulated
+ * side (a few percent): measured over the harness's sweep, 0.4% of balls.
+ * The scene and the harness roll it the same way, through `runOut`.
+ */
+export function runOutChance(runs: number): number {
+  if (runs === 1) return 0.002;
+  if (runs === 2) return 0.010;
+  if (runs === 3) return 0.035;
+  return 0;
+}
+
+/**
+ * The run-out, if the roll says so: the last run is not completed, the
+ * batter is gone, and the runs already crossed stand. Only a struck ball
+ * with runs on it can be one.
+ */
+export function runOut(outcome: Outcome, roll: number): Outcome {
+  if (outcome.wicket || outcome.extra === "wide" || outcome.extra === "no-ball") return outcome;
+  if (roll >= runOutChance(outcome.runs)) return outcome;
+  const completed = (outcome.runs - 1) as Outcome["runs"];
+  return {
+    ...outcome,
+    runs: completed,
+    wicket: "run-out",
+    description: `Run out! Sent back for the ${outcome.runs === 1 ? "single" : outcome.runs === 2 ? "second" : "third"} and never made it.`,
+  };
+}
+
 // -- the judge ---------------------------------------------------------------
 
 /** Everything the judge needs to know about the ball, read once a frame. */
@@ -289,6 +327,13 @@ export interface BallState {
   /** Radial metres where the struck ball first touched down. Zero until it has. */
   landingM: number;
   field: Fielder[];
+  /**
+   * The batter is forward: the pad is between the ball and the stumps. A ball
+   * that would have hit them is lbw rather than bowled. The physics has no
+   * pad; the stance is the honest stand-in, and it is the same read the
+   * simulation makes when it calls a front-foot miss on a full ball lbw.
+   */
+  padded?: boolean;
   /** A delivery that was never legal. The bat cannot reach a wide; a no-ball is played. */
   illegal?: "wide" | "no-ball";
 }
@@ -317,7 +362,7 @@ export function judgeBall(ball: BallState): Outcome | null {
     // keeper was bowled several frames after it had gone by.
     const overTheStumps = Math.abs(ball.x - BATTER_X) <= STUMP_WIDTH;
     if (ball.illegal !== "wide" && overTheStumps && ball.y > GROUND_Y - STUMP_HEIGHT) {
-      return withExtra(bowled(), ball.illegal);
+      return withExtra(ball.padded ? lbw() : bowled(), ball.illegal);
     }
     if (ball.x < KEEPER_X) {
       if (ball.illegal === "wide") return WIDE;

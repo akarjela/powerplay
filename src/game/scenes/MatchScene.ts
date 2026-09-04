@@ -8,7 +8,7 @@ import type { Stance } from "../config";
 import { Bat } from "../physics/bat";
 import { contactDamping } from "../physics/swing";
 import {
-  fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity,
+  fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity, runOut,
 } from "../physics/field";
 import type { Fielder } from "../physics/field";
 import { planPosition, shotBearing, travelledBearing } from "../physics/direction";
@@ -666,9 +666,13 @@ export class MatchScene extends Phaser.Scene {
       bearing: this.bearing,
       landingM: this.landingM,
       field: this.field,
+      padded: this.stance === "front",
       illegal: this.delivery?.illegal,
     });
-    if (outcome) this.resolve(this.delivery ? bridge(outcome, this.delivery, { stance: this.stance, effort: this.effort }) : outcome);
+    if (outcome) {
+      const run = runOut(outcome, this.rng.next());
+      this.resolve(this.delivery ? bridge(run, this.delivery, { stance: this.stance, effort: this.effort }) : run);
+    }
   }
 
   private draw(ball: MatterJS.BodyType): void {
