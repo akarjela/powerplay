@@ -75,19 +75,30 @@ Read this first; everything below is the detail behind it.
 - **Their innings, watched.** A broadcast panel replays the simulated
   innings ball by ball with pacing, moments, a 3x speed and a skip -- before
   you bat when you chase, after your innings when you set a target.
+- **LBW and run-outs on the physics path.** Forward and beaten on the
+  stumps is lbw; a run is a roll for a run-out, applied identically by the
+  scene and the harness.
+- **Your fate in the season.** `fate()` in tournament.ts: champion,
+  runner-up, or knocked out and where. A trophy card if you won, a card for
+  the other endings, once, remembered on the save (`Season.told`). Your own
+  fixture can be simulated instead of played.
 
 ### What is left
 
 Ordered by how much a player would notice.
 
 1. **The two paths do not value a ball identically**, and now that is a
-   number rather than a worry. Over the harness's random player the physics
-   gives 1.35 runs a ball to the model's 1.15 and 9.0% wickets to 7.1%; it
-   punishes an attack harder (20% wickets against 11%) and pays a block
-   more (0.87 runs a ball against 0.50). Whether to tune either path toward
-   the other is a design call, not a bug; the table is a `MEASURE=1` away.
-2. **The physics path still only produces bowled and caught.** The sim has
-   five dismissals. A season's stats will show the difference.
+   number rather than a worry. Over four seeds of 1200 balls from the
+   harness's random player, the physics gives 1.34-1.40 runs a ball to the
+   model's 0.96-1.05, 8-10% wickets to the model's 4-6%, and 18% boundaries
+   to 10%. It punishes an attack harder (16-20% wickets against 5-13%) and
+   pays a block more (about 1.0 a ball against 0.5). The physics path is
+   both more generous and more dangerous. Whether to tune either path
+   toward the other is a design call, not a bug; `MEASURE=1 npm test`
+   prints the tables, `BRIDGE_SEED=x BRIDGE_BALLS=n` change the sweep.
+2. **The physics path produces bowled, caught, lbw and run-out**; stumped
+   does not exist there. Close enough that a season's stats will not show
+   it unless you look.
 3. **Fielders do not move on screen**, and deep point and third man are
    behind the camera. Left-handers do not exist. There is no keeper.
 4. **The menu scenes are still Phaser text on a 1280x720 frame**, zoomed to
@@ -101,8 +112,7 @@ Ordered by how much a player would notice.
 
 In order, with the reasoning in *Next steps* below:
 
-1. Decide what to do with the two-path gap (see *What is left*), then lbw
-   and run-outs on the physics path so the dismissal mix matches.
+1. Decide what to do with the two-path gap (see *What is left*).
 2. Fielders who move to the ball; a keeper; left-handers.
 3. The team and season screens onto the design system, in the DOM.
 4. M5: sound, touch, deploy, season history.
@@ -168,7 +178,7 @@ attack costs; see *What is left*.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 160 passing (`npm test`), ~3s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
+| Tests | 165 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
 | Source | ~5,950 lines across 31 files in `src/` (plus ~430 of CSS); ~2,150 across 13 in `tests/` |
@@ -701,6 +711,14 @@ side, a collar, a trim, straps, soles, fingers -- each is two lines of code
 and the sum is a person at 90px. The features are dealt from the player id
 so they are stable; nothing here is an asset, and the repo still has none.
 
+**40. Bands fitted on one seed, again.** The bridge test's first bands came
+from one sweep of 600 balls and held with room to spare. Adding one random
+draw per ball (the run-out roll) shifted the sequence and the wicket gap
+went from 1.9 points to 7.9. Four seeds at 1200 balls showed the model's
+wicket rate is 4-6%, and the 7.1% the bands were built on was a high draw.
+Trap 9, in the one file that had cited it. **A band is not measured until
+it has been measured on more than one seed.**
+
 **38. Technique as the width of the blade.** The obvious hitting-zone lever,
 and measured, nothing: contact 85.4% against 85.5% for technique 92 against
 12. Side-on, `BAT_WIDTH` is the blade's *thickness*, and the ball meets the
@@ -804,6 +822,10 @@ Left-handers. A keeper.
 - **The season is one localStorage key.** No history, no export, and a
   change to the `Season` shape needs a version bump in `store.ts` or old
   saves will be read as garbage (they are validated loosely and dropped).
+  `told` was added as optional, which an old save simply lacks.
+- **The fate card is shown a tick after the season scene creates**, so a
+  restart's shutdown cannot hide it. Under the automated tab it looked
+  flaky for exactly that reason.
 - **The season's rng is per fixture** (`seed:fixtureId`), so replaying a
   fixture after a reload bowls the same balls. Deliberate; also means a
   player can retry a match by reloading. Decide whether that is a feature.

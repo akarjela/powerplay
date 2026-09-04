@@ -48,7 +48,9 @@ export class SeasonScene extends Phaser.Scene {
     this.root = this.add.container(0, 0);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => hideFate());
     this.render();
-    this.tell();
+    // A tick later, so a restart's shutdown of the previous instance can
+    // never hide a card this one has just shown.
+    this.time.delayedCall(30, () => this.tell());
   }
 
   /**
