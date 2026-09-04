@@ -3,7 +3,7 @@ import type { Franchise } from "../../../data/franchises";
 import type { Batter, Bowler } from "../../../sim/player";
 import { nextFixture, standings } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
-import { el, hex, hudRoot, ordinal } from "../dom";
+import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
 
 export type Mode = "quick" | "season";
 
@@ -37,7 +37,9 @@ export class TeamScreen {
     this.screen = screen;
 
     const head = el("header", "screen-head");
-    head.append(el("div", "wordmark", "Powerplay"));
+    const mark = el("div", "wordmark");
+    mark.append(trophyMark("mark"), el("span", undefined, "Powerplay"));
+    head.append(mark);
     const tabs = el("div", "tabs");
     for (const [mode, label] of [["quick", "Quick match"], ["season", "Season"]] as const) {
       const b = el("button", "tab", label);
@@ -64,8 +66,7 @@ export class TeamScreen {
     for (const f of FRANCHISES) {
       const card = el("button", "franchise");
       card.type = "button";
-      card.style.setProperty("--flag-primary", hex(f.colours.primary));
-      card.style.setProperty("--flag-secondary", hex(f.colours.secondary));
+      teamTint(card, f.colours);
       const tag = el("span", "tag");
       card.append(
         el("span", "flag"),
@@ -111,6 +112,9 @@ export class TeamScreen {
   }
 
   private refresh(): void {
+    const lead = this.batting;
+    this.screen.classList.toggle("is-tinted", Boolean(lead));
+    if (lead) teamTint(this.screen, lead.colours);
     for (const [mode, b] of this.tabs) b.classList.toggle("is-on", mode === this.mode);
     this.hint.textContent = this.mode === "quick"
       ? "Pick the side you bat for, then the side you face."
@@ -155,8 +159,7 @@ export class TeamScreen {
     const place = table.findIndex((s) => s.squad === saved.you) + 1;
 
     const panel = el("section", "panel saved");
-    panel.style.setProperty("--flag-primary", hex(you.colours.primary));
-    panel.style.setProperty("--flag-secondary", hex(you.colours.secondary));
+    teamTint(panel, you.colours);
     panel.append(
       el("span", "label", "Season in progress"),
       el("div", "big", you.name),
@@ -215,8 +218,7 @@ function bowlerRole(pace: number): string {
 
 function squadPanel(f: Franchise, title: string, batting: boolean): HTMLElement {
   const panel = el("section", "panel squad");
-  panel.style.setProperty("--flag-primary", hex(f.colours.primary));
-  panel.style.setProperty("--flag-secondary", hex(f.colours.secondary));
+  teamTint(panel, f.colours);
   const head = el("div", "panel-head");
   head.append(el("span", "label", title), el("span", "who", f.name));
   panel.append(head);

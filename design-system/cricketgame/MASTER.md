@@ -59,6 +59,28 @@ Contrast: every foreground on Ink 0/1 clears 7:1; `--fg-dim` on Ink 1 is 6.4:1;
 Franchise colours appear only as a **flag** (a vertical bar on the leading edge
 of the strip) and never as a text colour.
 
+### Colour, the vivid layer (added 2026-09-04)
+
+The base above is the broadcast strip. The **screens** -- team, season, the
+cards -- are allowed to be loud, the way a T20 league is:
+
+- **Team colours take over.** Once a side is chosen, its `primary` tints the
+  page: the top band, a radial wash behind the header, the primary action
+  (with `--on-team` picked for contrast by `onColour()`), the leading edge of
+  every panel, your row in the table, your score cell on the strip.
+  `teamTint(node, colours)` sets `--flag-primary`, `--flag-secondary` and
+  `--on-team` on any element.
+- **Brand gradient** before a side is chosen: `--brand-a` `#7C3AED` (purple)
+  to `--brand-b` `#F97316` (orange) to `--milestone` gold, on the band and
+  the background washes.
+- **Franchise cards and fixture bugs are full-colour blocks** in the side's
+  primary with the secondary as an edge; text on them is `--on-team`.
+- **The trophy** (`trophyMark()` in dom.ts) marks the wordmark on both
+  screens, the champion panel and the champion card. Gold is the one colour
+  that means "the prize" and is never used for anything else.
+- Semantic colours on the strip (four, six, wicket, ahead, behind, live) are
+  unchanged and are not overridden by team colours.
+
 ### Typography
 
 - **Display:** `Bebas Neue`, fallback `Impact, "Arial Narrow Bold", sans-serif`.

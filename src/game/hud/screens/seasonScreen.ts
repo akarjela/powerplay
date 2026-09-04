@@ -5,7 +5,7 @@ import {
   caps, champion, involvesYou, isOver, nextFixture, playoffs, standings,
 } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
-import { el, hex, hudRoot, ordinal } from "../dom";
+import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
 
 export interface SeasonScreenHandlers {
   onPlay: (fixture: Fixture) => void;
@@ -35,12 +35,14 @@ export class SeasonScreen {
 
   render(season: Season): void {
     const you = franchiseById(season.you);
-    this.screen.style.setProperty("--flag-primary", hex(you.colours.primary));
-    this.screen.style.setProperty("--flag-secondary", hex(you.colours.secondary));
+    teamTint(this.screen, you.colours);
+    this.screen.classList.add("is-tinted");
     this.body.replaceChildren();
 
     const head = el("header", "screen-head");
-    head.append(el("div", "wordmark", "Season"));
+    const mark = el("div", "wordmark");
+    mark.append(trophyMark("mark"), el("span", undefined, "Season"));
+    head.append(mark);
     head.append(el("div", "who", you.name));
     const teams = el("button", "ghost", "Teams");
     teams.type = "button";
@@ -49,7 +51,11 @@ export class SeasonScreen {
     this.body.append(head);
 
     const grid = el("div", "season-grid");
-    grid.append(this.table(season), this.fixturePanel(season), this.results(season), this.capsPanel(season));
+    const left = el("div", "season-col");
+    const right = el("div", "season-col");
+    left.append(this.table(season), this.capsPanel(season));
+    right.append(this.fixturePanel(season), this.results(season));
+    grid.append(left, right);
     this.body.append(grid);
   }
 
@@ -63,7 +69,7 @@ export class SeasonScreen {
     rows.forEach((row, i) => {
       const f = franchiseById(row.squad);
       const r = el("div", `row ${row.squad === season.you ? "is-you" : ""} ${i < 4 ? "is-top" : ""}`);
-      r.style.setProperty("--flag-primary", hex(f.colours.primary));
+      teamTint(r, f.colours);
       const team = el("span", "team");
       team.append(el("span", "flag"), el("span", "code", f.code), el("span", "name", f.name));
       r.append(
@@ -87,8 +93,8 @@ export class SeasonScreen {
     const winner = franchiseById(champion(season)!);
     const place = standings(season).findIndex((s) => s.squad === season.you) + 1;
     const panel = el("section", "panel fixture is-over");
-    panel.style.setProperty("--flag-primary", hex(winner.colours.primary));
-    panel.style.setProperty("--flag-secondary", hex(winner.colours.secondary));
+    teamTint(panel, winner.colours);
+    panel.append(trophyMark("trophy small"));
     panel.append(
       el("span", "label gold", "Champions"),
       el("div", "big", winner.name),
@@ -116,9 +122,8 @@ export class SeasonScreen {
     panel.append(el("div", "sub", yours ? "Your next match" : "Next match"));
     const bug = (f: Franchise): HTMLElement => {
       const node = el("div", `bug ${f.id === season.you ? "is-you" : ""}`);
-      node.style.setProperty("--flag-primary", hex(f.colours.primary));
-      node.style.setProperty("--flag-secondary", hex(f.colours.secondary));
-      node.append(el("span", "flag"), el("span", "code", f.code), el("span", "name", f.name));
+      teamTint(node, f.colours);
+      node.append(el("span", "code", f.code), el("span", "name", f.name));
       return node;
     };
     const tie = el("div", "tie");
@@ -192,7 +197,7 @@ export class SeasonScreen {
     const row = (i: number, name: string, squad: string, fig: string, sub: string, you: boolean) => {
       const r = el("div", `cap-row ${you ? "is-you" : ""}`);
       const f = franchiseById(squad);
-      r.style.setProperty("--flag-primary", hex(f.colours.primary));
+      teamTint(r, f.colours);
       r.append(el("span", "pos", String(i + 1)), el("span", "flag"), el("span", "name", name), el("span", "code", f.code), el("span", "fig", fig), el("span", "sub", sub));
       return r;
     };

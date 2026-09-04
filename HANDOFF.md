@@ -95,6 +95,12 @@ Read this first; everything below is the detail behind it.
   him. Fielders
   who ran at the ball and left-handers were both built and both taken out
   the same evening -- see traps 41 and 42.
+- **The vivid layer.** Team colours take over the screens once a side is
+  chosen -- band, background wash, primary action, panel edges, your row --
+  with a purple-to-orange brand gradient before one is; franchise cards
+  and fixture bugs are full-colour blocks; a gold trophy marks the wordmark,
+  the champion panel and the champion card. `teamTint()` and `onColour()`
+  in dom.ts; the rules are in MASTER.md under *the vivid layer*.
 - **The orange and purple caps.** Every result carries a card of who scored
   and who took what (`Played.cards`; an older save without them is simply
   not counted), and `caps()` ranks the top five run scorers and wicket
