@@ -8,16 +8,12 @@ import { reducedMotion } from "../hud/dom";
 
 const IDLE: CrowdFrame[] = ["a", "b", "c"];
 
-/**
- * The crowd as a living layer: four baked frames of the same people, stacked
- * as images over the stands, crossfaded. Idle, it drifts between three ways
- * of sitting -- a shift here, a lean there, a flag at a different angle --
- * every half second or so, which is enough for a few thousand people to
- * stop being wallpaper. On a boundary or a wicket it cuts to the frame with
- * everyone on their feet, hops, holds, and settles back down.
- *
- * Under reduced motion it holds one frame and swaps without a fade or a hop.
- */
+const HOLD_MS: Record<"four" | "six" | "wicket", number> = { six: 1000, four: 700, wicket: 420 };
+
+function anyOf<T>(list: readonly T[]): T {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 export class Crowd {
   private readonly scene: Phaser.Scene;
   private readonly images = new Map<CrowdFrame, Phaser.GameObjects.Image>();
@@ -38,7 +34,6 @@ export class Crowd {
     if (!reducedMotion()) this.scheduleIdle(800);
   }
 
-  /** The texture keys this layer baked, so a relayout can free them. */
   get textureKeys(): readonly string[] {
     return this.keys;
   }
@@ -62,15 +57,12 @@ export class Crowd {
     this.idle?.remove(false);
     this.idle = this.scene.time.delayedCall(delay, () => {
       if (this.reacting) return;
-      const next = IDLE.filter((f) => f !== this.current);
-      this.show(next[Math.floor(Math.random() * next.length)], 520);
+      this.show(anyOf(IDLE.filter((f) => f !== this.current)), 520);
       this.scheduleIdle(520 + 300 + Math.random() * 600);
     });
   }
 
-  /** Everyone up. A six holds longest; a wicket is a short, sharp rise. */
   react(kind: "four" | "six" | "wicket"): void {
-    const hold = kind === "six" ? 1000 : kind === "four" ? 700 : 420;
     this.reacting = true;
     this.idle?.remove(false);
     this.settle?.remove(false);
@@ -81,9 +73,9 @@ export class Crowd {
       for (const image of targets) image.setY(0);
       this.scene.tweens.add({ targets, y: -3, duration: 90, ease: "Quad.easeOut", yoyo: true });
     }
-    this.settle = this.scene.time.delayedCall(hold, () => {
+    this.settle = this.scene.time.delayedCall(HOLD_MS[kind], () => {
       this.reacting = false;
-      this.show(IDLE[Math.floor(Math.random() * IDLE.length)], 450);
+      this.show(anyOf(IDLE), 450);
       if (!reducedMotion()) this.scheduleIdle(900);
     });
   }

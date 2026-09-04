@@ -1,26 +1,18 @@
 import type { Fate } from "../../sim/tournament";
-import { el, hex, hudRoot } from "./dom";
-
-/**
- * The end of your season, said properly: a trophy if you won it, and a card
- * for the other ways it ends -- beaten in the final, knocked out in a
- * playoff, or out at the league stage. Full-screen, over the table, once.
- */
+import { el, hex, hudRoot, ordinal } from "./dom";
 
 export interface FateSpec {
   fate: Fate;
   team: { name: string; primary: number; secondary: number };
-  /** The side that beat you, when one did. */
+
   by?: string;
-  /** Primary action: close the card. */
+
   onClose: () => void;
-  /** Secondary: start a new season. Shown for a finished season. */
+
   onNewSeason?: () => void;
 }
 
 let current: HTMLElement | undefined;
-
-const ORDINAL = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 
 export function showFate(spec: FateSpec): void {
   hideFate();
@@ -32,23 +24,31 @@ export function showFate(spec: FateSpec): void {
   card.style.setProperty("--flag-secondary", hex(team.secondary));
 
   if (fate.kind === "champion") {
-    card.append(trophy());
-    card.append(el("div", "eyebrow", "Champions"));
-    card.append(el("div", "title", team.name));
-    card.append(el("div", "line", "Nine league games, the playoffs, the final. Your season. Take a bow."));
+    card.append(
+      trophy(),
+      el("div", "eyebrow", "Champions"),
+      el("div", "title", team.name),
+      el("div", "line", "Nine league games, the playoffs, the final. Your season. Take a bow."),
+    );
   } else if (fate.kind === "runner-up") {
-    card.append(el("div", "eyebrow", "Runners-up"));
-    card.append(el("div", "title", "Beaten in the final"));
-    card.append(el("div", "line", spec.by ? `${spec.by} lift the trophy. ${team.name} were one match from it.` : `${team.name} were one match from it.`));
+    card.append(
+      el("div", "eyebrow", "Runners-up"),
+      el("div", "title", "Beaten in the final"),
+      el("div", "line", spec.by ? `${spec.by} lift the trophy. ${team.name} were one match from it.` : `${team.name} were one match from it.`),
+    );
   } else if (fate.stage === "league") {
-    card.append(el("div", "eyebrow", "Season over"));
-    card.append(el("div", "title", "Out at the league stage"));
-    card.append(el("div", "line", `${team.name} finished ${ORDINAL(fate.place)}. The top four go on without you.`));
+    card.append(
+      el("div", "eyebrow", "Season over"),
+      el("div", "title", "Out at the league stage"),
+      el("div", "line", `${team.name} finished ${ordinal(fate.place)}. The top four go on without you.`),
+    );
   } else {
     const stage = fate.stage === "eliminator" ? "the Eliminator" : "Qualifier 2";
-    card.append(el("div", "eyebrow", "Knocked out"));
-    card.append(el("div", "title", `Beaten in ${stage}`));
-    card.append(el("div", "line", spec.by ? `${spec.by} go through. ${team.name} finished ${ORDINAL(fate.place)} in the league and go home.` : `${team.name} go home.`));
+    card.append(
+      el("div", "eyebrow", "Knocked out"),
+      el("div", "title", `Beaten in ${stage}`),
+      el("div", "line", spec.by ? `${spec.by} go through. ${team.name} finished ${ordinal(fate.place)} in the league and go home.` : `${team.name} go home.`),
+    );
   }
 
   const actions = el("div", "actions");
@@ -82,7 +82,6 @@ export function hideFate(): void {
   current = undefined;
 }
 
-/** A trophy, drawn: a cup on a stem on a plinth, with two handles and a gleam. */
 function trophy(): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 120 140");

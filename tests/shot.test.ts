@@ -9,16 +9,6 @@ import type { BallContext } from "../src/sim/outcome";
 import { matchQuality } from "../src/sim/shot";
 import type { Footwork, Shot } from "../src/sim/shot";
 
-/**
- * The footwork axis, tested directly rather than through a season.
- *
- * The calibration bands cannot see any of this. Every match multiplier is
- * centred on the expected match, so a *dead* footwork axis produces exactly the
- * same league averages as a live one -- the spread changes and the mean does
- * not. That is the same blind spot that let bowling attributes go nearly inert
- * until an A/B against extreme squads exposed it, so these are A/Bs.
- */
-
 const delivery = (length: Length, over: Partial<Delivery> = {}): Delivery => ({
   bowler: averageBowler("b", "Rana"),
   speed: 138,
@@ -32,7 +22,6 @@ const delivery = (length: Length, over: Partial<Delivery> = {}): Delivery => ({
 
 const context: BallContext = { phase: "middle", wicketsDown: 2, ballsFaced: 20 };
 
-/** Play the same ball many times on a given foot, and count what happened. */
 function tally(length: Length, footwork: Footwork, seed: string, rolls = 20_000) {
   const rng = makeRng(seed);
   const batter = averageBatter("a", "Batter");
@@ -56,13 +45,12 @@ describe("the footwork match", () => {
   it("scores the corners as catastrophes and a good length as forgiving", () => {
     expect(matchQuality("back", "yorker")).toBeLessThan(0.2);
     expect(matchQuality("front", "short")).toBeLessThan(0.3);
-    // Either foot survives a good length, which is why a misread there is cheap.
+
     expect(matchQuality("front", "good")).toBeGreaterThan(0.6);
     expect(matchQuality("back", "good")).toBeGreaterThan(0.6);
   });
 
   it("costs wickets when the footwork is wrong", () => {
-    // The test that fails if the axis ever goes dead.
     const right = tally("yorker", "front", "wicket-ab");
     const wrong = tally("yorker", "back", "wicket-ab");
     expect(wrong.wickets).toBeGreaterThan(right.wickets * 1.5);
@@ -82,11 +70,9 @@ describe("the punishment fits the mistake", () => {
     const front = tally("yorker", "front", "stuck");
     const shareBack = back.bowledOrLbw / back.wickets;
     const shareFront = front.bowledOrLbw / front.wickets;
-    // Measured at ~12 points apart (72% against 59%); the threshold sits under
-    // that rather than over it. Guessing this number first is how the last two
-    // A/B tests in this repo failed while the model was correct.
+
     expect(shareBack).toBeGreaterThan(shareFront + 0.08);
-    // It should be the majority way out, not a rare flourish.
+
     expect(shareBack).toBeGreaterThan(0.5);
   });
 
@@ -117,22 +103,12 @@ describe("reading the length", () => {
   });
 
   it("goes forward to a yorker and back to a short ball", () => {
-    // A batter who reads perfectly should still pick opposite feet for these.
     expect(readRate(100, "yorker", "front")).toBeGreaterThan(0.9);
     expect(readRate(100, "short", "back")).toBeGreaterThan(0.9);
   });
 });
 
 describe("the calibration constant the whole model is centred on", () => {
-  /**
-   * `EXPECTED_MATCH` is what every match multiplier in outcome.ts is centred on,
-   * and it is a function of two things that live somewhere else: `LENGTH_MIX` in
-   * delivery.ts, and the read rates. Change either and this constant goes stale,
-   * the multipliers stop being neutral at the mean, and the league's averages
-   * drift with no test failing -- exactly the kind of silent calibration rot
-   * that the season bands cannot see. So re-measure it against the real
-   * delivery model rather than trusting the number.
-   */
   it("still matches what the delivery model actually produces", () => {
     const rng = makeRng("expected");
     const teams = makeLeague(makeRng("expected-squads"));
@@ -140,7 +116,7 @@ describe("the calibration constant the whole model is centred on", () => {
 
     let sum = 0;
     let balls = 0;
-    // Walk the overs so the phases are weighted the way an innings weights them.
+
     for (let i = 0, over = 0; i < 60_000; i++, over = (over + 1) % 20) {
       const delivery = bowl(teams[i % 10].bowlers[i % 6], phaseOf(over), rng);
       if (delivery.illegal) continue;

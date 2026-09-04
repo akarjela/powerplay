@@ -16,79 +16,53 @@ import type { Delivery } from "../src/sim/delivery";
 import type { Outcome } from "../src/sim/types";
 import type { Rng } from "../src/sim/rng";
 
-/**
- * The game's physics, without the game.
- *
- * Phaser bundles Matter as plain CommonJS under its `src/` tree, and nothing in
- * the ball's flight needs a canvas. So this builds the same world the scene
- * does -- the same bodies from the same constants in `config.ts`, the same
- * swing controller from `swing.ts`, the same judge from `field.ts` -- and steps
- * it at PHYSICS_FPS with the controller running once every rendered frame,
- * exactly as the browser would.
- *
- * It exists because the last three false verdicts about this game came from
- * automated playtests whose *own aim* was wrong, and because measuring from a
- * backgrounded browser tab reports a physics that is not running. A harness
- * that shares every constant with the scene cannot be wrong about the world;
- * it can only be wrong about the player, and the player is one small object
- * you can read.
- */
-
 const require = createRequire(import.meta.url);
 const matter = (module: string) =>
   require(fileURLToPath(new URL(`../node_modules/phaser/src/physics/matter-js/lib/${module}.js`, import.meta.url)));
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const Engine: any = matter("core/Engine");
 const Events: any = matter("core/Events");
 const Bodies: any = matter("factory/Bodies");
 const Body: any = matter("body/Body");
 const Composite: any = matter("body/Composite");
 const Constraint: any = matter("constraint/Constraint");
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const STEP_MS = 1000 / PHYSICS_FPS;
 const STEPS_PER_FRAME = PHYSICS_FPS / 60;
 const FRAME_MS = STEP_MS * STEPS_PER_FRAME;
 
-/** How the harness bats: a stance, and where the pointer is at each moment. */
 export interface Player {
   stance: Stance;
-  /** Pointer position in world space, given milliseconds since release. */
+
   pointer(elapsedMs: number): Point;
-  /** The batter's power, 0..1. Average when absent, which is what every table was measured at. */
+
   power?: number;
 }
 
 export interface Played {
   outcome: Outcome;
-  /** Set if the bat met the ball. */
+
   contact?: {
-    /** Pixels in front of the pivot at the moment of contact. */
     aheadPx: number;
-    /** The bat's angle at contact, degrees forward of vertical. */
+
     bladeDegrees: number;
-    /** Angular velocity of the blade at contact, per step. What the ball takes from it. */
+
     angularVelocity: number;
     heightPx: number;
     elapsedMs: number;
   };
-  /** Radial metres the ball finished from the bat. */
+
   distanceM: number;
   bearing: number;
   landingM: number;
-  /** Where the delivery pitched, metres in front of the striker. */
+
   pitchedM: number;
-  /** Height when the ball first crossed the pivot, px. The hitting zone. */
+
   heightAtBatPx: number;
-  /**
-   * The hardest the blade swung while the ball was live, as a fraction of
-   * MAX_SWING_SPEED. What the bridge reads as commitment; measured on the
-   * frame, as the scene measures it.
-   */
+
   effort: number;
   elapsedMs: number;
-  /** The ball's state when the judge spoke, for debugging a ball that would not resolve. */
+
   final: { y: number; vx: number; vy: number };
 }
 
@@ -113,7 +87,7 @@ export class Headless {
     const ground = Bodies.rectangle(WORLD_LEFT + width / 2, GROUND_Y + 60, width, 120, {
       isStatic: true, label: "ground", ...GROUND_BODY,
     });
-    // Phaser's setBounds builds 64px-thick walls just outside the bounds.
+
     const walls = [
       Bodies.rectangle(WORLD_LEFT - 32, -1000, 64, 4128, { isStatic: true, label: "wall" }),
       Bodies.rectangle(WORLD_WIDTH + 32, -1000, 64, 4128, { isStatic: true, label: "wall" }),
@@ -159,18 +133,9 @@ export class Headless {
       }
     });
 
-    // One step so every body's deltaTime is the real step, as it is in the
-    // scene by the time anyone swings.
     Engine.update(this.engine, STEP_MS);
   }
 
-  /**
-   * Bowl one and play it out. Returns when the judge has spoken.
-   *
-   * The bearing is computed exactly where the scene computes it -- at the
-   * moment of contact, from the same `shotBearing` -- so the harness is
-   * measuring the direction model the player will meet.
-   */
   play(delivery: Delivery, player: Player, field: Fielder[], rng: Rng): Played {
     this.reset();
 
@@ -195,15 +160,12 @@ export class Headless {
     let struckAtMs = 0;
     let effort = 0;
 
-    // Six seconds is longer than any ball has ever taken; a ball still live
-    // after that is a bug in the world, not a slow shot.
     for (let frame = 0; frame < 360; frame++) {
       settlePivot(this.pivot, this.home, player.stance);
       const target = swingTarget(player.pointer(this.elapsedMs), this.pivot);
       Body.setAngularVelocity(this.bat, nextAngularVelocity(this.bat.angle, this.bat.angularVelocity, target));
       if (!this.struck) effort = Math.max(effort, Math.abs(this.bat.angularVelocity) / MAX_SWING_SPEED);
 
-      // The outfield, once a frame, exactly as the scene applies it.
       if (this.struck && isRolling(ball.position.y, ball.velocity.y)) {
         Body.setVelocity(ball, { x: rollingVelocity(ball.velocity.x), y: ball.velocity.y });
       }
@@ -276,7 +238,7 @@ export class Headless {
     this.pitchedM = 0;
     this.contact = undefined;
     this.elapsedMs = 0;
-    // The bat back to hanging still, the pivot back home.
+
     Body.setAngle(this.bat, 0);
     Body.setAngularVelocity(this.bat, 0);
     this.pivot.x = this.home.x;
@@ -286,21 +248,13 @@ export class Headless {
   }
 }
 
-/** The pointer a blade angle asks for: 100px out from the pivot, along the blade. */
 export function pointerForBlade(pivot: Point, bladeDegrees: number): Point {
   const angle = (-bladeDegrees * Math.PI) / 180;
   return { x: pivot.x - Math.sin(angle) * 100, y: pivot.y + Math.cos(angle) * 100 };
 }
 
-/** A resting pointer: bat hanging, a touch behind the body. */
 export const REST: Point = { x: PIVOT.x - 20, y: PIVOT.y + 60 };
 
-/**
- * A swing: rest until `startMs`, then aim the blade at `bladeDegrees` forward
- * of vertical. Aiming *past* the ball is what a real swing does -- aiming at
- * the contact angle decelerates the blade into the ball and reads as a dead
- * bat, which is the harness mistake that produced 79% dot balls once before.
- */
 export function swing(stance: Stance, startMs: number, bladeDegrees: number): Player {
   const aim = pointerForBlade(PIVOT, bladeDegrees);
   return {

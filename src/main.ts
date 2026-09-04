@@ -8,21 +8,15 @@ import { SeasonScene } from "./game/scenes/SeasonScene";
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "app",
-  /**
-   * Full-bleed. The canvas is the viewport, whatever shape that is; the match
-   * camera scales its focal length to *cover* the design frame (see
-   * `cameraForViewport`) and the menu scenes zoom to fit it. There are no bars.
-   */
+
   width: "100%",
   height: "100%",
   backgroundColor: "#05070c",
   physics: {
     default: "matter",
     matter: {
-      // See GRAVITY_Y in config.ts: empirical, and shared with the harness.
       gravity: { x: 0, y: GRAVITY_Y },
-      // See PHYSICS_FPS in config.ts: at 60Hz a full swing tunnels through the
-      // ball entirely. Matter has no CCD, so the step has to be small instead.
+
       runner: { fps: PHYSICS_FPS },
       debug: false,
     },
@@ -31,7 +25,4 @@ const game = new Phaser.Game({
   scene: [SelectScene, SeasonScene, MatchScene],
 });
 
-// Dev-only handle so the running simulation can be measured from the console.
-// Matter's setVelocity semantics are version-dependent; guessing at them is how
-// you end up with a 138kph delivery that ambles in at 30.
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__game = game;

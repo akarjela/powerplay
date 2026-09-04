@@ -5,10 +5,6 @@ import { createSeason } from "../../sim/tournament";
 import { clearSeason, loadSeason, saveSeason } from "../season/store";
 import { TeamScreen } from "../hud/screens/teamScreen";
 
-/**
- * The team screen. The page itself is DOM (`hud/screens/teamScreen.ts`);
- * this scene is the ground behind it and the way into the others.
- */
 export class SelectScene extends Phaser.Scene {
   private screen?: TeamScreen;
 

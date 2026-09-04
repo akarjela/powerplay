@@ -6,20 +6,10 @@ import { playBall } from "./outcome";
 import type { Outcome, Dismissal } from "./types";
 import { countsAsBall, runsAgainstBowler } from "./types";
 
-/**
- * Twenty overs, resolved ball by ball.
- *
- * This module owns the *bookkeeping* -- strike rotation, the over, who is
- * allowed to bowl next, when the innings is over -- and delegates every
- * judgement about what happened to `outcome.ts`. The split matters because in
- * M3 a human's swing produces an `Outcome` too, and this loop must be able to
- * consume it without knowing the difference.
- */
-
 export const OVERS = 20;
 export const BALLS_PER_OVER = 6;
 export const WICKETS = 10;
-/** Law: no bowler may bowl more than a fifth of the innings. */
+
 export const MAX_OVERS_PER_BOWLER = OVERS / 5;
 
 export interface BattingLine {
@@ -28,15 +18,15 @@ export interface BattingLine {
   balls: number;
   fours: number;
   sixes: number;
-  /** Absent while not out. */
+
   dismissal?: Dismissal;
-  /** The scorecard line, e.g. "c Sharma b Iyer". */
+
   how?: string;
 }
 
 export interface BowlingLine {
   bowler: Bowler;
-  /** Legal deliveries. Overs are derived, because 17 balls is 2.5 overs. */
+
   balls: number;
   runs: number;
   wickets: number;
@@ -44,31 +34,24 @@ export interface BowlingLine {
 }
 
 export interface BallEvent {
-  /** 0-indexed over. */
   over: number;
-  /** 1-indexed legal ball within the over; a wide repeats the previous number. */
+
   ball: number;
   striker: Batter;
   delivery: Delivery;
   outcome: Outcome;
-  /** Team score immediately after this ball. */
+
   runs: number;
   wickets: number;
 }
 
-/**
- * As much of an innings as a result or a table needs. The simulation's
- * `InningsResult` is one of these with the scorecard attached; the innings
- * you bat with a bat in your hand produces one too, and `resultOf` in match.ts
- * cannot tell them apart. That is the seam again, one level up.
- */
 export interface InningsSummary {
   squad: Squad;
   runs: number;
   wickets: number;
-  /** Legal balls bowled. */
+
   balls: number;
-  /** Set when the innings ended by reaching a target rather than running out. */
+
   won?: boolean;
 }
 
@@ -79,15 +62,12 @@ export interface InningsResult extends InningsSummary {
 }
 
 export interface InningsOptions {
-  /** Runs needed to win. When set, the innings stops the moment it is reached. */
   target?: number;
 }
 
-/** Runs the batting side gets, which unlike the bowler's figures includes byes. */
 const teamRuns = (outcome: Outcome) =>
   outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
 
-/** Runs credited to the batter, which excludes everything the bat did not make. */
 const batterRuns = (outcome: Outcome) => (outcome.extra ? 0 : outcome.runs);
 
 export function simulateInnings(
@@ -215,22 +195,8 @@ export function simulateInnings(
   };
 }
 
-/** A run-out is nobody's wicket. Everything else goes on the bowler's figures. */
 const chargeableToBowler = (dismissal: Dismissal) => dismissal !== "run-out";
 
-/**
- * Who bowls the next over.
- *
- * Two hard rules -- four overs each, and never two in a row -- and one soft
- * preference: whoever has the most overs left. That spreads an attack evenly
- * without needing a captain's model, and it guarantees the twenty overs can
- * always be filled. If the rules ever paint us into a corner the consecutive
- * rule yields first, because bowling out of the allocation would be illegal
- * while bowling back-to-back is merely unusual.
- *
- * Exported because the scene rotates the attack you face with the same rule:
- * a human innings and a simulated one must agree on who is allowed to bowl.
- */
 export function chooseBowler(
   bowlers: Bowler[],
   oversBowled: (bowler: Bowler) => number,
@@ -245,17 +211,14 @@ export function chooseBowler(
   return pool[rng.weighted(pool.map((b) => MAX_OVERS_PER_BOWLER - oversBowled(b)))];
 }
 
-/** "17.4", the way a scorecard writes it. */
 export function oversOf(balls: number): string {
   return `${Math.floor(balls / BALLS_PER_OVER)}.${balls % BALLS_PER_OVER}`;
 }
 
-/** Runs per over. Returns 0 rather than NaN for a bowler who has not bowled. */
 export function economyOf(line: BowlingLine): number {
   return line.balls === 0 ? 0 : (line.runs / line.balls) * BALLS_PER_OVER;
 }
 
-/** Runs per 100 balls. Returns 0 rather than NaN for a batter who did not face one. */
 export function strikeRateOf(line: BattingLine): number {
   return line.balls === 0 ? 0 : (line.runs / line.balls) * 100;
 }

@@ -14,6 +14,12 @@ and then the three items at the top of the list: the bridge, power at the
 crease, and their innings watched ball by ball. Nothing is mid-edit; the
 tree is clean and every test passes._
 
+**The source carries no comments**, by request, as of the cleanup on
+2026-09-03. Everything the comments used to say -- why a constant is what it
+is, what was measured, what was tried and failed -- lives in this file. Where
+this file says "the reasons are on `powerFactor` in swing.ts" or the like,
+read that as "the reasons are in the trap list below."
+
 **Every session that touches UI starts with: "Read
 `design-system/cricketgame/MASTER.md` first."** It holds the palette, the
 type, the motion rules and the anti-patterns; `pages/match-hud.md` and

@@ -3,25 +3,13 @@ import { BALLS_PER_OVER, OVERS, oversOf } from "../../sim/innings";
 import { countsAsBall, runsAgainstBowler } from "../../sim/types";
 import type { Outcome } from "../../sim/types";
 import type { BallMark } from "../humanInnings";
-import { el, hex, hudRoot } from "./dom";
+import { ballChip, el, hex, hudRoot } from "./dom";
 import { clearMoment, showMoment } from "./moments";
-
-/**
- * Their innings, watched.
- *
- * The model has already played it -- `simulateInnings` returned a full
- * ball-by-ball log the moment it was asked -- so this is a replay, paced
- * like a broadcast: a ball every few hundred milliseconds, a pause on a
- * wicket or a boundary, a breath at the end of an over, and the same
- * moments over the ground that your own innings gets. It can be run at
- * three times the speed or skipped outright; the result is the same either
- * way, because nothing here decides anything.
- */
 
 export interface InningsViewSides {
   batting: { code: string; name: string; primary: number; secondary: number };
   bowling: { code: string; name: string };
-  /** Set when this innings is a chase. */
+
   target?: number;
 }
 
@@ -33,7 +21,7 @@ interface Tally {
 }
 
 export class InningsView {
-  private readonly root: HTMLElement;
+  private readonly scrim: HTMLElement;
   private readonly n: Record<string, HTMLElement> = {};
   private readonly balls: HTMLElement;
   private readonly speedButton: HTMLButtonElement;
@@ -56,7 +44,6 @@ export class InningsView {
     this.log = result.log;
     this.sides = sides;
     this.onDone = onDone;
-    this.root = hudRoot();
 
     const scrim = el("div", "scrim watch");
     scrim.style.pointerEvents = "auto";
@@ -107,9 +94,9 @@ export class InningsView {
 
     panel.append(head, body, this.n.call, controls);
     scrim.append(panel);
-    this.root.append(scrim);
+    hudRoot().append(scrim);
     requestAnimationFrame(() => scrim.classList.add("is-on"));
-    this.n.scrim = scrim;
+    this.scrim = scrim;
 
     this.render(undefined);
     this.timer = window.setTimeout(() => this.step(), 900);
@@ -142,7 +129,7 @@ export class InningsView {
   private apply(event: BallEvent): void {
     const o = event.outcome;
     const legal = countsAsBall(o);
-    // A new over: clear the tracker once the next ball arrives.
+
     if (legal && event.ball === 1 && this.over.length > 0 && this.overIsDone()) {
       this.over = [];
       this.overRuns = 0;
@@ -191,20 +178,13 @@ export class InningsView {
       this.n.chase.replaceChildren(el("span", "label", "Run rate"), el("span", "big", crr));
     }
 
-    // The two at the crease: the striker of the last ball, and the other man
-    // still in, which the log knows only by who has faced and not been out.
     const striker = event?.striker;
     const strikerTally = striker ? this.batters.get(striker.id) : undefined;
-    const others = [...this.batters.entries()].filter(([id, t]) => id !== striker?.id && !t.out);
-    const other = others[others.length - 1];
-    const line = (node: HTMLElement, name: string | undefined, t: Tally | undefined, out?: string) => {
-      node.replaceChildren();
-      if (!name) return;
-      node.append(el("span", "name", name), el("span", "r", `${t?.runs ?? 0}${out ? "" : "*"}`), el("span", "b", `(${t?.balls ?? 0})`));
-      if (out) node.append(el("span", "how", out));
-    };
-    line(this.n.striker, striker?.name, strikerTally, strikerTally?.out);
-    line(this.n.nonStriker, other ? this.result.batting.find((l) => l.batter.id === other[0])?.batter.name : undefined, other?.[1]);
+    const stillIn = [...this.batters.entries()].filter(([id, t]) => id !== striker?.id && !t.out);
+    const other = stillIn[stillIn.length - 1];
+    const otherName = other && this.result.batting.find((l) => l.batter.id === other[0])?.batter.name;
+    fillBatterRow(this.n.striker, striker?.name, strikerTally, strikerTally?.out);
+    fillBatterRow(this.n.nonStriker, otherName, other?.[1]);
 
     const bowler = event?.delivery.bowler;
     const bt = bowler ? this.bowlers.get(bowler.id) : undefined;
@@ -221,16 +201,13 @@ export class InningsView {
     const slots = Math.max(BALLS_PER_OVER, this.over.length);
     this.balls.replaceChildren(...Array.from({ length: slots }, (_, i) => {
       const mark = this.over[i];
-      if (!mark) return el("span", "ball empty");
-      const kind = mark.kind === "boundary" && mark.label === "6" ? "six" : mark.kind;
-      return el("span", `ball ${kind}`, mark.label);
+      return mark ? ballChip(mark) : el("span", "ball empty");
     }));
 
     if (event) this.n.call.textContent = event.outcome.description;
   }
 
   private legalBallsThrough(event: BallEvent): number {
-    // The log's ball is the legal count within the over; a wide repeats it.
     return event.over * BALLS_PER_OVER + event.ball;
   }
 
@@ -239,15 +216,26 @@ export class InningsView {
     this.done = true;
     window.clearTimeout(this.timer);
     clearMoment();
-    this.n.scrim.remove();
+    this.scrim.remove();
     this.onDone();
   }
 
   destroy(): void {
     this.done = true;
     window.clearTimeout(this.timer);
-    this.n.scrim?.remove();
+    this.scrim.remove();
   }
+}
+
+function fillBatterRow(node: HTMLElement, name: string | undefined, tally: Tally | undefined, out?: string): void {
+  node.replaceChildren();
+  if (!name) return;
+  node.append(
+    el("span", "name", name),
+    el("span", "r", `${tally?.runs ?? 0}${out ? "" : "*"}`),
+    el("span", "b", `(${tally?.balls ?? 0})`),
+  );
+  if (out) node.append(el("span", "how", out));
 }
 
 function markFor(outcome: Outcome): BallMark {

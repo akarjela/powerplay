@@ -8,19 +8,11 @@ import { LEAGUE, franchiseById } from "../src/data/franchises";
 import { makeRng } from "../src/sim/rng";
 import { OVERS, BALLS_PER_OVER, WICKETS } from "../src/sim/innings";
 
-/**
- * The season is bookkeeping, and bookkeeping is where a tournament quietly
- * stops meaning anything: a side that plays ten games in a nine-round league,
- * a tie worth nothing, a bracket that seeds the wrong pair. These are the
- * checks that would notice.
- */
-
 const IDS = LEAGUE.map((s) => s.id);
 const squadById = (id: string) => franchiseById(id).squad;
 
 const fresh = () => createSeason(IDS, "mum", "season-test");
 
-/** Play every fixture headlessly, in order, until the season is over. */
 function playOut(season: Season, seed = "playout"): Season {
   const rng = makeRng(seed);
   let s = season;
@@ -78,11 +70,11 @@ describe("the table", () => {
   it("awards two for a win, one each for a tie, and sorts by points then net run rate", () => {
     let season = fresh();
     const [m1, m2] = season.league.filter((f) => f.round === 1);
-    // m1: home wins by 40 in a full innings each way.
+
     season = recordResult(season, {
       fixtureId: m1.id, first: line(m1.home, 180), second: line(m1.away, 140), winner: m1.home, summary: "",
     });
-    // m2: a tie.
+
     season = recordResult(season, {
       fixtureId: m2.id, first: line(m2.home, 150), second: line(m2.away, 150), winner: null, summary: "",
     });
@@ -102,7 +94,7 @@ describe("the table", () => {
   it("charges a side bowled out the full twenty overs", () => {
     let season = fresh();
     const m = season.league[0];
-    // Home 160 in 20; away all out for 80 in 10 overs. Their rate is 80/20, not 80/10.
+
     season = recordResult(season, {
       fixtureId: m.id, first: line(m.home, 160), second: line(m.away, 80, WICKETS, 60), winner: m.home, summary: "",
     });
@@ -145,7 +137,7 @@ describe("the playoffs", () => {
     expect([final.home, final.away]).toContain(playoffWinner(season, q1, q1Played));
     expect([final.home, final.away]).toContain(champion(season));
     expect(nextFixture(season)).toBeNull();
-    // Four playoff matches and not one more.
+
     expect(season.results).toHaveLength(45 + 4);
   });
 

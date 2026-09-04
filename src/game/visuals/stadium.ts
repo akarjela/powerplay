@@ -1,28 +1,9 @@
 import Phaser from "phaser";
 
 import { BOUNDARY, CAMERA, PITCH_LENGTH, PX_PER_METRE } from "../config";
-
-const CAMERA_DESIGN_FOCAL = CAMERA.focal;
 import { RING } from "../physics/field";
 import type { Camera, Projected, Viewport } from "../view/camera";
 import type { Kit } from "./figures";
-
-/**
- * The ground, drawn once through the camera and baked into a texture.
- *
- * Everything here is a shape in the world -- a disc of turf, a rectangle of
- * pitch, a ring of stands with people in it -- projected point by point and
- * filled. No image assets: the rope curves because a projected circle curves,
- * and the crowd is several thousand small people, each a torso and a head,
- * seated in rows on tiers that recede with the stand. Phaser re-executes a
- * Graphics object's commands every frame, so all of it is rendered once into
- * a single texture the size of the canvas and shown as an image. The camera
- * does not move, so nothing is lost.
- *
- * Colours are a floodlit evening: a deep sky, two greens in the mow, a pale
- * strip of pitch, seating in blocks under a pale roof, a crowd that leans
- * toward the home side's colours.
- */
 
 const SKY_TOP = 0x081330;
 const SKY_HORIZON = 0x2f3d6b;
@@ -44,6 +25,10 @@ const SKINS = [0xf1c9a5, 0xe0ac7e, 0xc98e5a, 0xa9703f, 0x8a5a2b, 0x6b4423];
 
 const BOUNDARY_M = BOUNDARY / PX_PER_METRE;
 const PITCH_M = PITCH_LENGTH / PX_PER_METRE;
+
+const SQUARE_M = PITCH_M / 2;
+
+const DESIGN_FOCAL = CAMERA.focal;
 const STAND_INNER_M = BOUNDARY_M + 9;
 const STAND_HEIGHT_PX = 26 * PX_PER_METRE;
 const BAY_DEG = 5;
@@ -52,17 +37,15 @@ const toRad = (deg: number) => (deg * Math.PI) / 180;
 type Pt = Phaser.Math.Vector2;
 const pt = (x: number, y: number): Pt => new Phaser.Math.Vector2(x, y);
 
-/** Project a ring of ground points. */
-function circlePoints(camera: Camera, radiusM: number, step = 3): Pt[] {
+function discPoints(camera: Camera, centreM: number, radiusM: number, step = 3): Pt[] {
   const points: Pt[] = [];
   for (let deg = 0; deg <= 360; deg += step) {
-    const p = camera.ground(radiusM * Math.cos(toRad(deg)), radiusM * Math.sin(toRad(deg)));
+    const p = camera.ground(centreM + radiusM * Math.cos(toRad(deg)), radiusM * Math.sin(toRad(deg)));
     if (p) points.push(pt(p.sx, p.sy));
   }
   return points;
 }
 
-/** A point on the stand's inner face at a bearing and a height. */
 function standPoint(camera: Camera, deg: number, heightPx: number, radiusM = STAND_INNER_M): Projected | null {
   return camera.project({
     x: radiusM * Math.cos(toRad(deg)) * PX_PER_METRE,
@@ -79,12 +62,6 @@ const lerpP = (a: Projected, b: Projected, t: number): Projected => ({
   depth: a.depth + (b.depth - a.depth) * t,
 });
 
-/**
- * Draw the whole ground into one texture the size of the viewport and put it
- * on screen. `home` tints the crowd; a good share of them wear the batting
- * side's colours. The texture is keyed by kit and by size, so a resize bakes
- * a fresh one at the new resolution rather than stretching the old.
- */
 export function drawStadium(scene: Phaser.Scene, camera: Camera, home: Kit, view: Viewport): Phaser.GameObjects.Image {
   const width = Math.ceil(view.width);
   const height = Math.ceil(view.height);
@@ -112,10 +89,9 @@ function drawSky(g: Phaser.GameObjects.Graphics, camera: Camera, view: Viewport)
     g.fillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b));
     g.fillRect(0, (view.height / bands) * i, view.width, view.height / bands + 1);
   }
-  // A scatter of stars, and a moon low over the far stand -- a fixed point in
-  // the world, so it sits in the same place on the sky whatever the viewport.
+
   const rng = new Phaser.Math.RandomDataGenerator(["sky"]);
-  const s = camera.focal / CAMERA_DESIGN_FOCAL;
+  const s = camera.focal / DESIGN_FOCAL;
   for (let i = 0; i < 90; i++) {
     g.fillStyle(0xffffff, rng.realInRange(0.2, 0.8)).fillCircle(rng.between(0, view.width), rng.between(0, 90 * s), rng.realInRange(0.5, 1.3) * s);
   }
@@ -126,18 +102,9 @@ function drawSky(g: Phaser.GameObjects.Graphics, camera: Camera, view: Viewport)
   }
 }
 
-/**
- * A ring of seating in 5-degree bays. Each bay's inner face is a projected
- * quad; on it, rows of seats in two tiers, an aisle at the bay edge, a rail
- * and a walkway between tiers, a roof with its underside in shadow, and a
- * crowd -- one small person per seat, sized by the bay's depth, in shirts
- * of every colour with a run of the home side's among them, some standing,
- * some with a flag up.
- */
 function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, view: Viewport): void {
   const rng = new Phaser.Math.RandomDataGenerator(["stands"]);
 
-  // Hoardings, a metre tall just beyond the rope, in blocks of colour.
   for (let deg = 0, i = 0; deg < 360; deg += 6, i++) {
     const r = BOUNDARY_M + 1.5;
     const a = standPoint(camera, deg, 0, r);
@@ -153,31 +120,30 @@ function drawStands(g: Phaser.GameObjects.Graphics, camera: Camera, home: Kit, v
   for (const bay of visibleBays(camera, view)) {
     const { bl, br, tl, tr, quad } = bay;
     const even = (bay.deg / BAY_DEG) % 2 === 0;
-    // Front wall, lower tier seats, walkway, upper tier seats, roof shadow, roof.
+
     g.fillStyle(0x2a3357).fillPoints(quad(0, 0.06), true);
     g.fillStyle(even ? SEAT_A : SEAT_B).fillPoints(quad(0.06, 0.44), true);
     g.fillStyle(WALKWAY).fillPoints(quad(0.44, 0.49), true);
     g.fillStyle(even ? SEAT_B : SEAT_A).fillPoints(quad(0.49, 0.86), true);
     g.fillStyle(ROOF_UNDER).fillPoints(quad(0.86, 0.94), true);
     g.fillStyle(ROOF).fillPoints(quad(0.94, 1.0), true);
-    // Aisle down the bay edge, and a rail along the front and the walkway.
+
     g.fillStyle(AISLE).fillPoints(quad(0.06, 0.86, 0, 0.07), true);
     g.lineStyle(Math.max(1, 1.6 * bl.scale), RAIL, 0.9);
     g.strokePoints([lerp(bl, tl, 0.06), lerp(br, tr, 0.06)], false);
     g.strokePoints([lerp(bl, tl, 0.49), lerp(br, tr, 0.49)], false);
-    // Seat rows, faint.
+
     g.lineStyle(1, 0x1f2747, 0.5);
     for (const t of [0.14, 0.22, 0.30, 0.38, 0.57, 0.65, 0.73, 0.81]) {
       g.strokePoints([lerp(bl, tl, t), lerp(br, tr, t)], false);
     }
-    // A banner on the front rail of some bays.
+
     if (rng.frac() < 0.25) {
       g.fillStyle(0xf8fafc, 0.9).fillPoints(quad(0.0, 0.055, 0.15, 0.85), true);
       g.fillStyle(rng.frac() < 0.5 ? home.primary : 0xdc2626, 0.85).fillPoints(quad(0.012, 0.043, 0.2, 0.8), true);
     }
   }
 
-  // Roof lights: a run of small lamps along the roof edge.
   for (let deg = 2.5; deg < 360; deg += BAY_DEG) {
     const p = standPoint(camera, deg, STAND_HEIGHT_PX * 0.93);
     if (!p || p.depth < 300 || p.sx < 0 || p.sx > view.width) continue;
@@ -191,11 +157,10 @@ interface Bay {
   br: Projected;
   tl: Projected;
   tr: Projected;
-  /** A quad on the bay's face between two heights (0 floor, 1 roof) and two widths. */
+
   quad: (t0: number, t1: number, u0?: number, u1?: number) => Pt[];
 }
 
-/** The bays of the ring that are in front of the camera and on screen. */
 function visibleBays(camera: Camera, view: Viewport): Bay[] {
   const bays: Bay[] = [];
   for (let deg = 0; deg < 360; deg += BAY_DEG) {
@@ -216,18 +181,8 @@ function visibleBays(camera: Camera, view: Viewport): Bay[] {
   return bays;
 }
 
-/** A frame of the crowd: three ways of sitting still, and on their feet. */
 export type CrowdFrame = "a" | "b" | "c" | "up";
 
-/**
- * The crowd alone, on a transparent texture the size of the viewport, in one
- * of four frames. Where everyone sits, what they wear and who has a flag is
- * dealt from one seeded generator and is identical in every frame; how they
- * are holding themselves this instant -- a shift in the seat, a lean, an arm,
- * the angle of a flag -- comes from a second generator seeded by the frame.
- * Crossfading two idle frames is a crowd that will not sit still; the `up`
- * frame is most of them on their feet with their arms in the air.
- */
 export function bakeCrowd(scene: Phaser.Scene, camera: Camera, home: Kit, view: Viewport, frame: CrowdFrame): string {
   const width = Math.ceil(view.width);
   const height = Math.ceil(view.height);
@@ -242,14 +197,14 @@ export function bakeCrowd(scene: Phaser.Scene, camera: Camera, home: Kit, view: 
 
   for (const bay of visibleBays(camera, view)) {
     const { bl, br, tl, tr } = bay;
-    // Seat pitch ~0.85m: a bay of 7.6m holds nine across.
+
     const s = bl.scale;
     const across = 9;
     const rows: number[] = [0.10, 0.17, 0.24, 0.31, 0.38, 0.53, 0.60, 0.67, 0.74, 0.81];
     const homeBay = seat.frac() < 0.3;
     for (const v of rows) {
       for (let k = 0; k < across; k++) {
-        if (seat.frac() < 0.08) continue; // an empty seat
+        if (seat.frac() < 0.08) continue;
         const u = 0.1 + (k + 0.5 + seat.realInRange(-0.2, 0.2)) / across * 0.88;
         const base = lerp(lerpP(bl, br, u), lerpP(tl, tr, u), v);
         const stander = seat.frac() < 0.12;
@@ -258,7 +213,6 @@ export function bakeCrowd(scene: Phaser.Scene, camera: Camera, home: Kit, view: 
         const hasFlag = stander && seat.frac() < 0.5 && seat.frac() < 0.6;
         const flag = seat.frac() < 0.7 ? home.primary : home.secondary;
 
-        // This instant.
         const standing = up ? pose.frac() < 0.85 || stander : stander;
         const dx = pose.realInRange(-0.6, 0.6) * s + (pose.frac() < 0.06 ? pose.realInRange(-1.4, 1.4) * s : 0);
         const dy = up ? -pose.realInRange(0, 2.5) * s : pose.realInRange(-0.4, 0.4) * s;
@@ -301,7 +255,7 @@ function drawFloodlights(g: Phaser.GameObjects.Graphics, camera: Camera): void {
     const top = standPoint(camera, deg, 32 * PX_PER_METRE, r);
     if (!base || !top || base.depth < 300) continue;
     const w = Math.max(3, 10 * top.scale);
-    // A lattice mast: two legs and cross-braces.
+
     g.lineStyle(Math.max(1.5, 3 * top.scale), 0x0a1428, 1);
     g.lineBetween(top.sx - w, top.sy, base.sx - w * 1.6, base.sy);
     g.lineBetween(top.sx + w, top.sy, base.sx + w * 1.6, base.sy);
@@ -323,8 +277,7 @@ function drawFloodlights(g: Phaser.GameObjects.Graphics, camera: Camera): void {
         );
       }
     }
-    // Bloom: a warm halo in a stack of discs, dense at the head and gone by
-    // the rim, and a streak of glare below the lamps.
+
     const cx = top.sx;
     const cy = top.sy - headH / 2;
     const halo = 260 * top.scale;
@@ -337,12 +290,6 @@ function drawFloodlights(g: Phaser.GameObjects.Graphics, camera: Camera): void {
   }
 }
 
-/**
- * What the floodlights do to the ground and the air: a warm pool of light
- * on the grass under each tower, brightest where the four beams cross in
- * the middle, and a faint haze over the far side of the ground where the
- * beams pass through the night.
- */
 function drawLightPools(g: Phaser.GameObjects.Graphics, camera: Camera, view: Viewport): void {
   const pool = (alongM: number, acrossM: number, radiusM: number, alpha: number) => {
     for (let i = 0; i < 5; i++) {
@@ -355,16 +302,13 @@ function drawLightPools(g: Phaser.GameObjects.Graphics, camera: Camera, view: Vi
       if (pts.length > 3) g.fillStyle(0xfff0c2, alpha * (0.35 + i * 0.16)).fillPoints(pts, true);
     }
   };
-  const cx = PITCH_M / 2;
   for (const deg of [42, 138, -42, -138]) {
     const r = BOUNDARY_M * 0.55;
-    pool(cx + r * Math.cos(toRad(deg)), r * Math.sin(toRad(deg)), 30, 0.028);
+    pool(SQUARE_M + r * Math.cos(toRad(deg)), r * Math.sin(toRad(deg)), 30, 0.028);
   }
-  pool(cx, 0, 26, 0.03);
+  pool(SQUARE_M, 0, 26, 0.03);
 
-  // Haze: a soft band of pale light along the far horizon, above the far
-  // stand, thinning upward into the sky.
-  const far = camera.ground(cx, BOUNDARY_M + 9);
+  const far = camera.ground(SQUARE_M, BOUNDARY_M + 9);
   if (far) {
     const bands = 12;
     const height = view.height * 0.22;
@@ -375,41 +319,21 @@ function drawLightPools(g: Phaser.GameObjects.Graphics, camera: Camera, view: Vi
   }
 }
 
-/**
- * A wedge of the outfield between two bearings from the middle of the pitch,
- * as a projected polygon. The stripes radiate from the square, which is how a
- * ground is actually mown -- from the middle out -- and it makes the pitch
- * the centre of the picture at a glance.
- */
 function wedgePoints(camera: Camera, innerM: number, outerM: number, deg0: number, deg1: number, step = 2): Pt[] {
-  const cx = PITCH_M / 2;
   const outer: Pt[] = [];
   const inner: Pt[] = [];
   for (let deg = deg0; deg <= deg1 + 1e-6; deg += step) {
-    const a = camera.ground(cx + outerM * Math.cos(toRad(deg)), outerM * Math.sin(toRad(deg)));
-    const b = camera.ground(cx + innerM * Math.cos(toRad(deg)), innerM * Math.sin(toRad(deg)));
+    const a = camera.ground(SQUARE_M + outerM * Math.cos(toRad(deg)), outerM * Math.sin(toRad(deg)));
+    const b = camera.ground(SQUARE_M + innerM * Math.cos(toRad(deg)), innerM * Math.sin(toRad(deg)));
     if (a) outer.push(pt(a.sx, a.sy));
     if (b) inner.push(pt(b.sx, b.sy));
   }
   return [...outer, ...inner.reverse()];
 }
 
-/** The disc of turf about the middle of the pitch. */
-function turfDisc(camera: Camera, radiusM: number, step = 3): Pt[] {
-  const cx = PITCH_M / 2;
-  const points: Pt[] = [];
-  for (let deg = 0; deg <= 360; deg += step) {
-    const p = camera.ground(cx + radiusM * Math.cos(toRad(deg)), radiusM * Math.sin(toRad(deg)));
-    if (p) points.push(pt(p.sx, p.sy));
-  }
-  return points;
-}
-
 function drawTurf(g: Phaser.GameObjects.Graphics, camera: Camera): void {
-  g.fillStyle(APRON).fillPoints(circlePoints(camera, BOUNDARY_M + 9), true);
+  g.fillStyle(APRON).fillPoints(discPoints(camera, 0, BOUNDARY_M + 9), true);
 
-  // The grass darkens toward the rope, where the floodlights reach least:
-  // a stack of discs from the edge colour in to the centre colour.
   const edge = Phaser.Display.Color.ValueToColor(GRASS_EDGE);
   const centre = Phaser.Display.Color.ValueToColor(GRASS_LIGHT);
   const rings = 14;
@@ -417,13 +341,9 @@ function drawTurf(g: Phaser.GameObjects.Graphics, camera: Camera): void {
     const t = i / (rings - 1);
     const r = BOUNDARY_M + 1 - (BOUNDARY_M - 14) * t;
     const c = Phaser.Display.Color.Interpolate.ColorWithColor(edge, centre, 1, Math.pow(t, 1.4));
-    g.fillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b)).fillPoints(circlePoints(camera, r), true);
+    g.fillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b)).fillPoints(discPoints(camera, 0, r), true);
   }
 
-  // Mowing stripes, radiating from the square: about six metres wide at the
-  // rope, starting outside the square so they do not meet in a point. The
-  // alternate wedges are lifted and dropped a touch, so the gradient beneath
-  // still reads and the stripes are grass rather than a sunburst.
   const wedge = 5;
   for (let deg = 0, i = 0; deg < 360; deg += wedge, i++) {
     const band = wedgePoints(camera, 13, BOUNDARY_M + 1, deg, deg + wedge);
@@ -432,21 +352,15 @@ function drawTurf(g: Phaser.GameObjects.Graphics, camera: Camera): void {
     else g.fillStyle(0x000000, 0.045);
     g.fillPoints(band, true);
   }
-  // Lighter toward the middle where the floodlights concentrate.
-  g.fillStyle(0xfff3d6, 0.05).fillPoints(turfDisc(camera, 30), true);
-  g.fillStyle(0xfff3d6, 0.04).fillPoints(turfDisc(camera, 18), true);
 
-  const ring = circlePoints(camera, RING);
+  g.fillStyle(0xfff3d6, 0.05).fillPoints(discPoints(camera, SQUARE_M, 30), true);
+  g.fillStyle(0xfff3d6, 0.04).fillPoints(discPoints(camera, SQUARE_M, 18), true);
+
+  const ring = discPoints(camera, 0, RING);
   g.lineStyle(1.5, 0xf8fafc, 0.35).strokePoints(ring, true);
   drawRope(g, camera);
 }
 
-/**
- * The boundary: a padded rope, not a line. Cushions about a metre and a half
- * long with a hand's gap between them, each a thick round-capped stroke with
- * a highlight along its top and a shadow beneath on the grass. The rope is
- * lit from above, so the far side reads a little cooler than the near.
- */
 function drawRope(g: Phaser.GameObjects.Graphics, camera: Camera): void {
   const cushionM = 1.5;
   const gapM = 0.25;
@@ -470,7 +384,6 @@ function drawRope(g: Phaser.GameObjects.Graphics, camera: Camera): void {
     if (pts.length > 1) segments.push({ pts, scale });
   }
 
-  // Shadow on the grass, then the cushion, then its top highlight.
   for (const { pts, scale } of segments) {
     const w = Math.max(2.5, 9 * scale);
     g.lineStyle(w * 1.15, 0x08240f, 0.45).strokePoints(pts.map((p) => pt(p.x, p.y + w * 0.35)), false);
@@ -495,7 +408,7 @@ function drawPitch(g: Phaser.GameObjects.Graphics, camera: Camera): void {
   g.fillStyle(PITCH).fillPoints(quad(-2.4, PITCH_M + 2.4, -1.55, 1.55), true);
   g.fillStyle(PITCH_WORN, 0.7).fillPoints(quad(5, 9, -0.9, 0.9), true);
   g.fillStyle(PITCH_WORN, 0.7).fillPoints(quad(PITCH_M - 9, PITCH_M - 5, -0.9, 0.9), true);
-  // Creases.
+
   g.fillStyle(0xf8fafc, 0.9);
   for (const x of [1.22, PITCH_M - 1.22]) g.fillPoints(quad(x - 0.05, x + 0.05, -1.4, 1.4), true);
   for (const x of [0, PITCH_M]) g.fillPoints(quad(x - 0.04, x + 0.04, -1.32, 1.32), true);

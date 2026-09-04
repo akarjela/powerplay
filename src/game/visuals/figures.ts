@@ -1,33 +1,20 @@
 import Phaser from "phaser";
 
-import { BALL_RADIUS, BAT_LENGTH, BAT_WIDTH, GLOVE_LOCAL_X, STUMP_HEIGHT } from "../config";
-import type { Camera, Projected } from "../view/camera";
-
-/**
- * The people, the stumps, the bat and the ball. Vector-drawn in world pixels
- * -- the same ~4x exaggeration the bat and ball use, so a player reads as
- * roughly 1.8m against a bat of 0.97m -- inside containers the scene places
- * and scales by projection. A figure never knows where it is on screen.
- *
- * Everyone has a face, a build and a kit. Skin, hair, beard and glasses are
- * dealt from a player's id so the same man looks the same every match, and
- * two fielders side by side do not look like the same drawing twice. The
- * batter wears the batting franchise's colours, the fielders the bowling
- * franchise's. There are no labels; the call names the fielder.
- */
+import { BALL_RADIUS, BAT_LENGTH, BAT_WIDTH, GLOVE_LOCAL_X, GROUND_Y, STUMP_HEIGHT } from "../config";
+import { Camera } from "../view/camera";
+import type { Projected } from "../view/camera";
 
 export interface Kit {
   primary: number;
   secondary: number;
 }
 
-/** What a player looks like, apart from the kit. */
 export interface Look {
   skin: number;
   hair: number;
   beard: "none" | "stubble" | "full";
   glasses: boolean;
-  /** 0.9 slight, 1.1 broad. */
+
   build: number;
 }
 
@@ -37,7 +24,6 @@ const PAD = 0xf7f9fb;
 const BOOT = 0x1c2534;
 const SOLE = 0xd9d9d9;
 
-/** A stable, cheap hash so a player id always deals the same look. */
 function hashOf(id: string): number {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) {
@@ -72,13 +58,6 @@ const lighten = (colour: number, by: number) => {
 type G = Phaser.GameObjects.Graphics;
 const pt = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
 
-/**
- * A soft shadow on the turf: a stack of ellipses, each a little smaller and
- * a little denser than the last, so the edge feathers instead of cutting.
- * Under floodlights from four towers a player's shadow is a pool beneath
- * the feet rather than a cast shape, which is what this is. The centre
- * reaches about `peak`; the rim is nearly nothing.
- */
 export function softShadow(g: G, x: number, y: number, w: number, h: number, peak = 0.42): void {
   const layers = 5;
   for (let i = 0; i < layers; i++) {
@@ -87,28 +66,24 @@ export function softShadow(g: G, x: number, y: number, w: number, h: number, pea
   }
 }
 
-/**
- * A head seen from the front: face, ears, hair, eyes under brows, a nose, a
- * mouth, maybe a beard, maybe glasses. Radius ~9 world px.
- */
 function drawFaceFront(g: G, x: number, y: number, r: number, look: Look): void {
   const skinShade = darken(look.skin, 0.22);
-  // Ears, behind the face.
+
   g.fillStyle(look.skin).fillCircle(x - r * 0.95, y + r * 0.05, r * 0.28).fillCircle(x + r * 0.95, y + r * 0.05, r * 0.28);
-  // Face: a little longer than round, with a jaw.
+
   g.fillStyle(look.skin).fillEllipse(x, y, r * 2, r * 2.25);
   g.fillStyle(skinShade, 0.35).fillEllipse(x + r * 0.45, y + r * 0.2, r * 0.9, r * 1.6);
-  // Hair: a cap of it above the brow line, with sideburns.
+
   g.fillStyle(look.hair).fillEllipse(x, y - r * 0.55, r * 2.05, r * 1.35);
   g.fillStyle(look.skin).fillEllipse(x, y + r * 0.05, r * 1.9, r * 1.55);
   g.fillStyle(look.hair).fillRect(x - r * 1.0, y - r * 0.4, r * 0.28, r * 0.75).fillRect(x + r * 0.72, y - r * 0.4, r * 0.28, r * 0.75);
-  // Beard.
+
   if (look.beard !== "none") {
     g.fillStyle(look.hair, look.beard === "full" ? 0.85 : 0.35);
     g.fillEllipse(x, y + r * 0.7, r * 1.75, r * 1.0);
     g.fillStyle(look.skin).fillEllipse(x, y + r * 0.45, r * 0.75, r * 0.45);
   }
-  // Brows, eyes, nose, mouth.
+
   g.lineStyle(r * 0.16, look.hair, 0.9);
   g.lineBetween(x - r * 0.62, y - r * 0.32, x - r * 0.18, y - r * 0.36);
   g.lineBetween(x + r * 0.18, y - r * 0.36, x + r * 0.62, y - r * 0.32);
@@ -128,43 +103,35 @@ function drawFaceFront(g: G, x: number, y: number, r: number, look: Look): void 
   g.lineBetween(x - r * 0.3, y + r * 0.62, x + r * 0.3, y + r * 0.62);
 }
 
-/** A head in profile, facing right: the batter's. */
 function drawFaceProfile(g: G, x: number, y: number, r: number, look: Look): void {
   const skinShade = darken(look.skin, 0.22);
   g.fillStyle(look.skin).fillEllipse(x, y, r * 2, r * 2.2);
-  // Nose and chin push forward.
+
   g.fillStyle(look.skin).fillTriangle(x + r * 0.75, y - r * 0.05, x + r * 1.25, y + r * 0.3, x + r * 0.7, y + r * 0.42);
   g.fillStyle(look.skin).fillEllipse(x + r * 0.45, y + r * 0.78, r * 1.1, r * 0.8);
-  // Hair at the back and top.
+
   g.fillStyle(look.hair).fillEllipse(x - r * 0.25, y - r * 0.5, r * 1.7, r * 1.35);
   g.fillStyle(look.skin).fillEllipse(x + r * 0.2, y + r * 0.05, r * 1.55, r * 1.55);
   g.fillStyle(look.hair).fillRect(x - r * 0.95, y - r * 0.5, r * 0.5, r * 1.0);
-  // Ear, on the near side.
+
   g.fillStyle(look.skin).fillEllipse(x - r * 0.35, y + r * 0.05, r * 0.42, r * 0.55);
   g.lineStyle(r * 0.08, skinShade).strokeEllipse(x - r * 0.35, y + r * 0.05, r * 0.28, r * 0.36);
   if (look.beard !== "none") {
     g.fillStyle(look.hair, look.beard === "full" ? 0.85 : 0.35);
     g.fillEllipse(x + r * 0.35, y + r * 0.8, r * 1.4, r * 0.85);
   }
-  // Brow, eye, mouth.
+
   g.lineStyle(r * 0.16, look.hair, 0.9).lineBetween(x + r * 0.2, y - r * 0.36, x + r * 0.8, y - r * 0.28);
   g.fillStyle(0xffffff).fillEllipse(x + r * 0.5, y - r * 0.1, r * 0.4, r * 0.26);
   g.fillStyle(0x1f1410).fillCircle(x + r * 0.58, y - r * 0.09, r * 0.11);
   g.lineStyle(r * 0.13, darken(look.skin, 0.5), 0.85).lineBetween(x + r * 0.55, y + r * 0.5, x + r * 0.95, y + r * 0.45);
 }
 
-/**
- * The people, redrawn: about seven heads tall, shoulders wider than hips,
- * limbs that taper, flat two-tone shading and a thin dark edge so a figure
- * reads cleanly at 30px as well as 90. Same faces as before, a size down.
- */
-
 const EDGE = 0x0a0f1c;
 const TROUSER = 0xf3f4f6;
 const TROUSER_SHADE = 0xd4d7dc;
 const OUTLINE_ALPHA = 0.35;
 
-/** A limb as a tapered quad from (x0,y0) width w0 to (x1,y1) width w1, with an edge. */
 function limb(g: G, x0: number, y0: number, w0: number, x1: number, y1: number, w1: number, colour: number, shade?: number): void {
   const dx = x1 - x0;
   const dy = y1 - y0;
@@ -179,12 +146,14 @@ function limb(g: G, x0: number, y0: number, w0: number, x1: number, y1: number, 
   ];
   g.fillStyle(colour).fillPoints(pts, true);
   if (shade !== undefined) {
-    g.fillStyle(shade, 0.55).fillPoints([pts[0], pt((pts[0].x + pts[1].x) / 2 + nx * 0, (pts[0].y + pts[1].y) / 2), pts[1], pt(pts[1].x - nx * w1 * 0.3, pts[1].y - ny * w1 * 0.3), pt(pts[0].x - nx * w0 * 0.3, pts[0].y - ny * w0 * 0.3)], true);
+    const mid = pt((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2);
+    const in0 = pt(pts[0].x - nx * w0 * 0.3, pts[0].y - ny * w0 * 0.3);
+    const in1 = pt(pts[1].x - nx * w1 * 0.3, pts[1].y - ny * w1 * 0.3);
+    g.fillStyle(shade, 0.55).fillPoints([pts[0], mid, pts[1], in1, in0], true);
   }
   g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokePoints(pts, true, true);
 }
 
-/** A boot at a foot: sole, upper, a trim in the kit's second colour, facing `dir` (+1 right, -1 left, 0 front). */
 function boot(g: G, x: number, y: number, dir: number, kit: Kit, w = 14): void {
   const lead = dir === 0 ? 0 : dir * w * 0.25;
   g.fillStyle(SOLE).fillRoundedRect(x - w / 2 + lead * 0.4, y - 2.5, w, 2.5, 1);
@@ -193,7 +162,6 @@ function boot(g: G, x: number, y: number, dir: number, kit: Kit, w = 14): void {
   g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeRoundedRect(x - w / 2 + lead * 0.4, y - 7.5, w, 7.5, 2);
 }
 
-/** A torso: hips narrower than shoulders, leaning by `lean` px at the top, with a sash and a number block. */
 function torso(g: G, hipX: number, hipY: number, hipW: number, shoulderY: number, shoulderW: number, lean: number, kit: Kit, side: boolean): void {
   const shade = darken(kit.primary, 0.32);
   const pts = [
@@ -203,34 +171,33 @@ function torso(g: G, hipX: number, hipY: number, hipW: number, shoulderY: number
     pt(hipX + lean - shoulderW / 2, shoulderY),
   ];
   g.fillStyle(kit.primary).fillPoints(pts, true);
-  // Shaded side and a lit panel.
+
   if (side) {
     g.fillStyle(shade, 0.85).fillPoints([pts[0], pt(hipX - hipW * 0.15, hipY), pt(hipX + lean - shoulderW * 0.15, shoulderY), pts[3]], true);
     g.fillStyle(lighten(kit.primary, 0.2), 0.45).fillPoints([pt(hipX + hipW * 0.2, hipY - 4), pt(hipX + hipW * 0.45, hipY - 4), pt(hipX + lean + shoulderW * 0.4, shoulderY + 6), pt(hipX + lean + shoulderW * 0.15, shoulderY + 6)], true);
   } else {
     g.fillStyle(shade, 0.7).fillPoints([pts[0], pt(hipX - hipW * 0.28, hipY), pt(hipX + lean - shoulderW * 0.3, shoulderY), pts[3]], true);
   }
-  // Sash: a diagonal in the second colour.
+
   const t0 = 0.42;
   const t1 = 0.56;
   const at = (t: number, k: number) => (pt(hipX + (lean) * t + (k - 0.5) * (hipW + (shoulderW - hipW) * t), hipY + (shoulderY - hipY) * t));
   g.fillStyle(kit.secondary, 0.95).fillPoints([at(t0, 0.05), at(t0, 0.32), at(t1 + 0.34, 0.95), at(t1 + 0.34, 0.68)], true);
-  // Sponsor block.
+
   g.fillStyle(0xffffff, 0.85).fillRect(hipX + lean * 0.75 - 6, shoulderY + 9, 12, 5);
-  // Collar.
+
   g.fillStyle(kit.secondary).fillTriangle(hipX + lean - 5, shoulderY, hipX + lean + 5, shoulderY, hipX + lean, shoulderY + 5);
   g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokePoints(pts, true, true);
 }
 
-/** A batting helmet over a profile head: shell, peak, visor line, grille and strap. */
 function drawHelmet(g: G, x: number, y: number, r: number, kit: Kit): void {
   const shell = darken(kit.primary, 0.12);
   g.fillStyle(shell).fillEllipse(x - r * 0.05, y - r * 0.3, r * 2.4, r * 2.0);
   g.fillStyle(lighten(shell, 0.3), 0.45).fillEllipse(x - r * 0.45, y - r * 0.8, r * 0.9, r * 0.45);
   g.fillStyle(kit.secondary, 0.95).fillRect(x - r * 1.2, y - r * 0.5, r * 2.4, r * 0.2);
-  // Peak, out over the eyes.
+
   g.fillStyle(shell).fillPoints([pt(x + r * 0.2, y - r * 0.3), pt(x + r * 1.55, y - r * 0.25), pt(x + r * 1.5, y - r * 0.05), pt(x + r * 0.2, y - r * 0.05)], true);
-  // Grille: titanium bars, peak to chin.
+
   g.lineStyle(r * 0.11, 0xd7dde8, 0.95);
   for (let i = 0; i < 3; i++) {
     const yy = y + r * (0.05 + i * 0.3);
@@ -241,7 +208,6 @@ function drawHelmet(g: G, x: number, y: number, r: number, kit: Kit): void {
   g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeEllipse(x - r * 0.05, y - r * 0.3, r * 2.4, r * 2.0);
 }
 
-/** A cap over a front-facing head: crown, peak, badge. */
 function drawCap(g: G, x: number, y: number, r: number, kit: Kit): void {
   const crown = darken(kit.primary, 0.1);
   g.fillStyle(crown).fillEllipse(x, y - r * 0.6, r * 2.15, r * 1.3);
@@ -251,18 +217,11 @@ function drawCap(g: G, x: number, y: number, r: number, kit: Kit): void {
   g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeEllipse(x, y - r * 0.6, r * 2.15, r * 1.3);
 }
 
-/** Sunglasses on a front-facing head. */
 function drawShades(g: G, x: number, y: number, r: number): void {
   g.fillStyle(0x0b0f1a, 0.92).fillRoundedRect(x - r * 0.72, y - r * 0.28, r * 0.62, r * 0.36, r * 0.1).fillRoundedRect(x + r * 0.1, y - r * 0.28, r * 0.62, r * 0.36, r * 0.1);
   g.lineStyle(r * 0.08, 0x0b0f1a).lineBetween(x - r * 0.1, y - r * 0.18, x + r * 0.1, y - r * 0.18);
 }
 
-/**
- * A batsman at the crease, facing the bowler (to the right). Origin at the
- * feet; the gloves at (GLOVE_LOCAL_X, handsLocalY) so the bat is in them.
- * Side-on stance a stride in front of the stumps, weight over the front
- * foot, head over the ball.
- */
 export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, look: Look): Phaser.GameObjects.Container {
   const c = scene.add.container(0, 0);
   const g = scene.add.graphics();
@@ -270,7 +229,6 @@ export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, 
 
   softShadow(g, 2, 1, 56, 10);
 
-  // Legs: back leg straighter, front leg bent and forward. Trousers, then pads.
   limb(g, -6 * b, -56, 13 * b, -13 * b, -6, 11 * b, TROUSER, TROUSER_SHADE);
   limb(g, 5 * b, -56, 13 * b, 13 * b, -6, 11 * b, TROUSER);
   for (const [px, top, h, w] of [[-13 * b, -46, 40, 11 * b], [13 * b, -44, 38, 11 * b]] as const) {
@@ -283,25 +241,20 @@ export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, 
   boot(g, -13 * b, 0, 1, kit);
   boot(g, 13 * b, 0, 1, kit);
 
-  // Torso leaning into the shot; a thigh guard bulge under the trousers.
   g.fillStyle(0xe8ebef).fillEllipse(8 * b, -50, 14 * b, 10);
   torso(g, 0, -56, 20 * b, -90, 26 * b, 5, kit, true);
 
-  // Head, in profile, under a helmet. About a seventh of the height.
   const hx = 7;
   const hy = -99;
   drawFaceProfile(g, hx, hy, 7.5, look);
   drawHelmet(g, hx, hy, 7.5, kit);
 
-  // Arms: back arm with a guard, front arm over it, both down to the hands
-  // at (GLOVE_LOCAL_X, handsLocalY) -- by the back hip, where the bat rests
-  // in the stance.
   const gx = GLOVE_LOCAL_X;
   limb(g, 1, -84, 8, gx - 3, handsLocalY - 4, 6, kit.primary, darken(kit.primary, 0.32));
   g.fillStyle(0xe5e7eb).fillRoundedRect(gx - 4, -72, 7, 11, 3);
   limb(g, 9, -84, 8, gx + 1, handsLocalY - 6, 6, kit.primary);
   limb(g, gx - 1, handsLocalY - 8, 5, gx, handsLocalY - 1, 4.5, look.skin);
-  // Gloves: mitts with finger rolls and a wrist band.
+
   g.fillStyle(0xf1f5f9).fillRoundedRect(gx - 6, handsLocalY - 4, 12, 9, 4).fillRoundedRect(gx - 4.5, handsLocalY - 11, 11, 8, 4);
   for (let i = 0; i < 3; i++) g.fillStyle(0xdbe1ea).fillRoundedRect(gx - 2 + i * 2.6, handsLocalY - 2 + i * 1.4, 2.2, 6, 1);
   g.fillStyle(kit.secondary, 0.9).fillRect(gx - 6, handsLocalY - 13, 12, 2.2);
@@ -312,10 +265,6 @@ export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, 
   return c;
 }
 
-/**
- * A fielder in the bowling side's kit, facing the camera, set and ready:
- * feet apart, knees bent, hands on knees. Origin at the feet.
- */
 export function drawFielder(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.GameObjects.Container {
   const c = scene.add.container(0, 0);
   const g = scene.add.graphics();
@@ -324,7 +273,6 @@ export function drawFielder(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.G
 
   softShadow(g, 0, 1, 44, 9);
 
-  // Legs apart, a bend at the knee.
   limb(g, -6 * b, -54, 11 * b, -12 * b, -28, 9 * b, trousers, darken(trousers, 0.3));
   limb(g, -12 * b, -28, 9 * b, -11 * b, -6, 8 * b, trousers, darken(trousers, 0.3));
   limb(g, 6 * b, -54, 11 * b, 12 * b, -28, 9 * b, trousers);
@@ -336,14 +284,12 @@ export function drawFielder(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.G
 
   torso(g, 0, -56, 19 * b, -88, 27 * b, 0, kit, false);
 
-  // Arms down to the knees, hands resting on them.
   limb(g, -12 * b, -84, 7, -16 * b, -60, 6, kit.primary, darken(kit.primary, 0.32));
   limb(g, -16 * b, -60, 5, -13 * b, -34, 4.5, look.skin);
   limb(g, 12 * b, -84, 7, 16 * b, -60, 6, kit.primary);
   limb(g, 16 * b, -60, 5, 13 * b, -34, 4.5, look.skin);
   g.fillStyle(look.skin).fillCircle(-13 * b, -32, 3).fillCircle(13 * b, -32, 3);
 
-  // Neck, head, cap; sunglasses on some.
   g.fillStyle(darken(look.skin, 0.15)).fillRect(-3, -95, 6, 8);
   drawFaceFront(g, 0, -98, 7.5, look);
   if (look.glasses) drawShades(g, 0, -98, 7.5);
@@ -353,11 +299,6 @@ export function drawFielder(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.G
   return c;
 }
 
-/**
- * The wicketkeeper: crouched behind the stumps, gloves together and low,
- * facing the bowler as the batter does but seen from the other side of the
- * pitch. Origin at the feet. In the bowling side's kit, capped.
- */
 export function drawKeeper(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.GameObjects.Container {
   const c = scene.add.container(0, 0);
   const g = scene.add.graphics();
@@ -366,12 +307,11 @@ export function drawKeeper(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.Ga
 
   softShadow(g, 0, 1, 46, 9);
 
-  // Legs folded: thighs out to the sides, shins straight down.
   limb(g, -4 * b, -30, 11 * b, -15 * b, -26, 10 * b, trousers, darken(trousers, 0.3));
   limb(g, -15 * b, -26, 9 * b, -14 * b, -6, 8 * b, trousers, darken(trousers, 0.3));
   limb(g, 4 * b, -30, 11 * b, 15 * b, -26, 10 * b, trousers);
   limb(g, 15 * b, -26, 9 * b, 14 * b, -6, 8 * b, trousers);
-  // Keeping pads, slim.
+
   for (const px of [-14 * b, 14 * b]) {
     g.fillStyle(PAD).fillRoundedRect(px - 4 * b, -24, 8 * b, 18, 3);
     g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeRoundedRect(px - 4 * b, -24, 8 * b, 18, 3);
@@ -379,10 +319,8 @@ export function drawKeeper(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.Ga
   boot(g, -14 * b, 0, 0, kit, 12);
   boot(g, 14 * b, 0, 0, kit, 12);
 
-  // Torso low and forward over the knees.
   torso(g, 0, -34, 18 * b, -60, 26 * b, 0, kit, false);
 
-  // Arms down between the knees to the gloves: big, pale, fingers up.
   limb(g, -10 * b, -56, 7, -6 * b, -34, 5.5, kit.primary, darken(kit.primary, 0.32));
   limb(g, 10 * b, -56, 7, 6 * b, -34, 5.5, kit.primary);
   g.fillStyle(0xf1f5f9).fillRoundedRect(-10, -36, 9, 12, 3.5).fillRoundedRect(1, -36, 9, 12, 3.5);
@@ -391,7 +329,6 @@ export function drawKeeper(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.Ga
   g.fillStyle(kit.secondary, 0.9).fillRect(-10, -26, 20, 2);
   g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeRoundedRect(-10, -36, 20, 12, 3.5);
 
-  // Head low, cap on.
   g.fillStyle(darken(look.skin, 0.15)).fillRect(-3, -67, 6, 8);
   drawFaceFront(g, 0, -70, 7.5, look);
   drawCap(g, 0, -70, 7.5, kit);
@@ -400,22 +337,14 @@ export function drawKeeper(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.Ga
   return c;
 }
 
-/**
- * Stumps at a point along the pitch, projected: three of them with bails,
- * bright against the turf with a dark edge, and a shadow at the base. The
- * caller sets the depth: the striker's draw over him, the bowler's under
- * the men around them.
- */
 export function drawStumps(
   scene: Phaser.Scene,
   camera: Camera,
   physicsX: number,
-  fromPhysics: (x: number, y: number) => { x: number; y: number; z: number },
-  groundY: number,
-  depth = 500 - 0.5,
+  depth: number,
 ): Phaser.GameObjects.Graphics {
   const g = scene.add.graphics().setDepth(depth);
-  const base = camera.project(fromPhysics(physicsX, groundY));
+  const base = camera.project(Camera.fromPhysics(physicsX, GROUND_Y));
   if (!base) return g;
   const s = base.scale;
   const height = STUMP_HEIGHT * s;
@@ -433,25 +362,23 @@ export function drawStumps(
   return g;
 }
 
-/** The bat: grip, splice and blade, drawn around its own centre so it rotates. */
 export function makeBat(scene: Phaser.Scene): Phaser.GameObjects.Container {
   const c = scene.add.container(0, 0);
   const g = scene.add.graphics();
   const half = BAT_LENGTH / 2;
 
-  // Handle, at the top (the pivot end), with grip rings.
   g.fillStyle(0x2f2a24).fillRoundedRect(-3, -half, 6, 18, 3);
   for (let i = 0; i < 4; i++) {
     g.fillStyle(0x1b1814).fillRect(-3, -half + 3 + i * 4, 6, 1.5);
   }
-  // Splice.
+
   g.fillStyle(0xd9c391).fillTriangle(-3, -half + 17, 3, -half + 17, 0, -half + 26);
-  // Blade, widening slightly toward the toe, with a grain and an edge.
+
   g.fillStyle(0xe3cd9a).fillRoundedRect(-BAT_WIDTH / 2, -half + 17, BAT_WIDTH, half * 2 - 17, 3);
   g.fillStyle(0xf0e0b8, 0.7).fillRect(-BAT_WIDTH / 2 + 1.5, -half + 20, 2.5, half * 2 - 24);
   g.fillStyle(0xc9b07a, 0.6).fillRect(BAT_WIDTH / 2 - 3, -half + 20, 1.5, half * 2 - 24);
   g.lineStyle(1, 0xbfa678).strokeRoundedRect(-BAT_WIDTH / 2, -half + 17, BAT_WIDTH, half * 2 - 17, 3);
-  // A sticker.
+
   g.fillStyle(0xdc2626, 0.85).fillRect(-BAT_WIDTH / 2 + 2, -half + 26, BAT_WIDTH - 4, 6);
   g.fillStyle(0xffffff, 0.8).fillRect(-BAT_WIDTH / 2 + 3, -half + 28, BAT_WIDTH - 6, 1.5);
 
@@ -459,7 +386,6 @@ export function makeBat(scene: Phaser.Scene): Phaser.GameObjects.Container {
   return c;
 }
 
-/** The ball: red, seamed, with a shadow on the grass beneath it and a trail. */
 export class BallSprite {
   private readonly gfx: Phaser.GameObjects.Graphics;
   private readonly shadow: Phaser.GameObjects.Ellipse;
@@ -489,7 +415,6 @@ export class BallSprite {
     }
   }
 
-  /** A wide is drawn faint: it is past you, and the bat will not meet it. */
   setGhost(ghost: boolean): void {
     this.gfx.setAlpha(ghost ? 0.45 : 1);
   }
@@ -499,11 +424,6 @@ export class BallSprite {
     this.trail.setDepth(depth + 2);
   }
 
-  /**
-   * Both projected: the ball where it is, the shadow on the turf beneath it.
-   * `hot` is a struck ball still in the air: its trail is longer and whiter,
-   * the way a tracer reads on a broadcast.
-   */
   update(ball: Projected, shadow: Projected, heightPx: number, hot = false): void {
     this.gfx.setPosition(ball.sx, ball.sy).setScale(ball.scale);
 

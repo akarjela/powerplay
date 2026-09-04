@@ -1,16 +1,11 @@
 import { franchiseById } from "../../../data/franchises";
+import type { Franchise } from "../../../data/franchises";
 import { oversOf } from "../../../sim/innings";
 import {
   champion, involvesYou, isOver, nextFixture, playoffs, standings,
 } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
-import { el, hex, hudRoot } from "../dom";
-
-/**
- * The season, between matches: the table, the fixture in hand, the results.
- * A fixture of yours is played with a bat or simulated instead; anyone
- * else's is resolved by the model on the spot. DOM, on the design system.
- */
+import { el, hex, hudRoot, ordinal } from "../dom";
 
 export interface SeasonScreenHandlers {
   onPlay: (fixture: Fixture) => void;
@@ -23,7 +18,6 @@ export interface SeasonScreenHandlers {
 const STAGE_NAME: Record<Fixture["stage"], string> = {
   league: "League", qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "Final",
 };
-const ORDINAL = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 
 export class SeasonScreen {
   private readonly screen: HTMLElement;
@@ -89,27 +83,30 @@ export class SeasonScreen {
     return panel;
   }
 
+  private championPanel(season: Season): HTMLElement {
+    const winner = franchiseById(champion(season)!);
+    const place = standings(season).findIndex((s) => s.squad === season.you) + 1;
+    const panel = el("section", "panel fixture is-over");
+    panel.style.setProperty("--flag-primary", hex(winner.colours.primary));
+    panel.style.setProperty("--flag-secondary", hex(winner.colours.secondary));
+    panel.append(
+      el("span", "label gold", "Champions"),
+      el("div", "big", winner.name),
+      el("div", "line", winner.id === season.you ? "Your season. Take a bow." : `${franchiseById(season.you).name} finished ${ordinal(place)} in the league.`),
+    );
+    const fresh = el("button", "primary", "New season");
+    fresh.type = "button";
+    fresh.addEventListener("click", () => this.handlers.onNewSeason());
+    const row = el("div", "actions");
+    row.append(fresh);
+    panel.append(row);
+    return panel;
+  }
+
   private fixturePanel(season: Season): HTMLElement {
+    if (isOver(season)) return this.championPanel(season);
+
     const panel = el("section", "panel fixture");
-
-    if (isOver(season)) {
-      const winner = franchiseById(champion(season)!);
-      panel.classList.add("is-over");
-      panel.style.setProperty("--flag-primary", hex(winner.colours.primary));
-      panel.style.setProperty("--flag-secondary", hex(winner.colours.secondary));
-      panel.append(el("span", "label gold", "Champions"));
-      panel.append(el("div", "big", winner.name));
-      const place = standings(season).findIndex((s) => s.squad === season.you) + 1;
-      panel.append(el("div", "line", winner.id === season.you ? "Your season. Take a bow." : `${franchiseById(season.you).name} finished ${ORDINAL(place)} in the league.`));
-      const row = el("div", "actions");
-      const fresh = el("button", "primary", "New season");
-      fresh.type = "button";
-      fresh.addEventListener("click", () => this.handlers.onNewSeason());
-      row.append(fresh);
-      panel.append(row);
-      return panel;
-    }
-
     const fixture = nextFixture(season)!;
     const home = franchiseById(fixture.home);
     const away = franchiseById(fixture.away);
@@ -117,15 +114,15 @@ export class SeasonScreen {
 
     panel.append(el("span", "label", fixture.stage === "league" ? `Round ${fixture.round} of 9` : STAGE_NAME[fixture.stage]));
     panel.append(el("div", "sub", yours ? "Your next match" : "Next match"));
+    const bug = (f: Franchise): HTMLElement => {
+      const node = el("div", `bug ${f.id === season.you ? "is-you" : ""}`);
+      node.style.setProperty("--flag-primary", hex(f.colours.primary));
+      node.style.setProperty("--flag-secondary", hex(f.colours.secondary));
+      node.append(el("span", "flag"), el("span", "code", f.code), el("span", "name", f.name));
+      return node;
+    };
     const tie = el("div", "tie");
-    for (const [f, side] of [[home, "home"], [away, "away"]] as const) {
-      const bug = el("div", `bug ${f.id === season.you ? "is-you" : ""}`);
-      bug.style.setProperty("--flag-primary", hex(f.colours.primary));
-      bug.style.setProperty("--flag-secondary", hex(f.colours.secondary));
-      bug.append(el("span", "flag"), el("span", "code", f.code), el("span", "name", f.name));
-      if (side === "home") tie.append(bug, el("span", "v", "v"));
-      else tie.append(bug);
-    }
+    tie.append(bug(home), el("span", "v", "v"), bug(away));
     panel.append(tie);
     panel.append(el("div", "line", `at ${home.ground}`));
 

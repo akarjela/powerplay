@@ -17,16 +17,8 @@ import { simulateMatch, netRunRateInnings, scoreline } from "../src/sim/match";
 import { runsAgainstBowler } from "../src/sim/types";
 import { makeLeague, makeSquad } from "./squads";
 
-/**
- * These tests check that the bookkeeping is self-consistent. They deliberately
- * do not check that the cricket is *plausible* -- 40 all out every innings would
- * satisfy every assertion here. That is calibration.test.ts's job, and the two
- * are kept apart because they fail for entirely different reasons.
- */
-
 const league = makeLeague(makeRng("test-league"));
 
-/** Eleven identical players, so a test can isolate one attribute. */
 function uniformSquad(id: string, batter: Partial<Batter>, bowler: Partial<Bowler>): Squad {
   return {
     id,
@@ -70,7 +62,6 @@ describe("the innings loop", () => {
   });
 
   it("does not credit a run-out to the bowler", () => {
-    // The scorecard says "run out", never "b Someone", and the figures agree.
     const runOuts = innings.log.filter((b) => b.outcome.wicket === "run-out").length;
     const dismissed = innings.batting.filter((b) => b.dismissal === "run-out").length;
     expect(dismissed).toBe(runOuts);
@@ -93,8 +84,6 @@ describe("the innings loop", () => {
   });
 
   it("charges the bowler for a wide but not for a leg bye", () => {
-    // Guards the seam functions against a change in the innings loop, not in
-    // types.ts -- the two have to keep agreeing.
     expect(runsAgainstBowler({ runs: 0, extra: "wide", description: "" })).toBe(1);
     expect(runsAgainstBowler({ runs: 1, extra: "leg-bye", description: "" })).toBe(0);
   });
@@ -118,8 +107,6 @@ describe("the bowling allocation", () => {
   });
 
   it("fills all twenty overs when nobody is dismissed early", () => {
-    // A side that cannot get out bats the full quota, which is the only way to
-    // prove the allocation can actually reach twenty.
     const wall = uniformSquad("wall", { technique: 100, aggression: 0 }, {});
     const gentle = uniformSquad("gentle", {}, { accuracy: 0, movement: 0, pace: 0 });
     const full = simulateInnings(wall, gentle, makeRng("full"));
@@ -133,7 +120,6 @@ describe("the bowling allocation", () => {
 });
 
 describe("attributes changing the cricket", () => {
-  /** Mean first-innings score over enough matches for the noise to settle. */
   const meanScore = (batting: Squad, bowling: Squad, seed: string) => {
     const rng = makeRng(seed);
     const scores = Array.from({ length: 40 }, () => simulateInnings(batting, bowling, rng).runs);
@@ -158,16 +144,6 @@ describe("attributes changing the cricket", () => {
     const margin = mean(loose) - mean(solid);
     expect(margin).toBeGreaterThan(1);
 
-    /**
-     * The upper bound matters as much as the lower one.
-     *
-     * Technique acts twice -- directly on the wicket chance, and through the
-     * footwork read in outcome.ts. When the footwork axis landed, leaving the
-     * direct term at its old strength put 4.50 wickets an innings between these
-     * two sides: a technique-12 team losing eight on its own. A one-sided
-     * assertion would have passed, and passed more comfortably than before,
-     * while the league quietly stopped making sense.
-     */
     expect(margin).toBeLessThan(4);
   });
 
@@ -203,7 +179,7 @@ describe("a whole match", () => {
     expect(b.summary).toBe(a.summary);
     expect(b.first.runs).toBe(a.first.runs);
     expect(b.second.runs).toBe(a.second.runs);
-    // Ball for ball, not just the totals.
+
     expect(b.first.log.map(describeBall)).toEqual(a.first.log.map(describeBall));
     expect(b.second.log.map(describeBall)).toEqual(a.second.log.map(describeBall));
   });
@@ -215,7 +191,7 @@ describe("a whole match", () => {
       if (!match.second.won) continue;
 
       expect(match.second.runs).toBeGreaterThan(match.first.runs);
-      // Not one ball more than it took.
+
       const beforeLast = match.second.log[match.second.log.length - 2];
       if (beforeLast) expect(beforeLast.runs).toBeLessThanOrEqual(match.first.runs);
     }

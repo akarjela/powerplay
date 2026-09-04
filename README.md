@@ -1,128 +1,130 @@
 # Powerplay
 
-A cricket game: drag-to-swing batting physics, with a stats-driven IPL-style
-tournament around it.
+A browser cricket game: **drag-to-swing batting physics, wrapped in a
+stats-driven T20 tournament.**
 
-Inspired by Bennett Foddy's [Little Master Cricket](https://www.foddy.net/legacy/Cricket.html),
-which nails the swing and deliberately has nothing behind it — no opponent, no
-consequence, every ball identical to the last. This keeps the bat and adds the
-part that makes you keep playing.
+You pick one of ten fictional franchises and carry it through a season: nine
+league games, a points table with net run rate, the playoff bracket, a final,
+a trophy. Every innings of yours you bat with a bat in your hand, on a nine-man
+field drawn through a perspective camera of a floodlit stadium, against the
+opposition's real attack. The model bats theirs, ball by ball, and you watch it
+on a broadcast scorecard. Or skip the season and play a quick match.
 
-**Status: M1, M2 and M4 done, M3 nearly.** Pick one of ten fictional
-franchises and carry it through a season: nine league games, a points table
-with net run rate, the playoff bracket, a champion. You bat every innings of
-yours with a drag-to-swing bat on a nine-man field drawn through a perspective
-camera; the model bats theirs and chases your totals. Or play a quick match. The tournament is not built yet — see the milestones
-below, and `HANDOFF.md` for the state in detail.
+The reference is Bennett Foddy's
+[Little Master Cricket](https://www.foddy.net/legacy/Cricket.html), which nails
+the swing and deliberately has nothing behind it. This keeps the bat and adds
+the part that makes you keep playing.
 
-Swing timing is the whole game: mistime it and the bat has already stopped, so
-you dribble it 8m. Time it and you clear the rope.
+Swing timing is the whole game. Mistime it and the bat has already stopped, so
+you dribble it to mid-off. Time it and you clear the rope.
+
+## Playing
 
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # 145 tests, no browser
+npm test        # 165 tests in ~4s, no browser
+npm run build   # dist/
 ```
 
-Quick match or season. Click to face a delivery, move the mouse to swing,
-arrow keys to pick a foot. Esc leaves a match.
+- Pick a side and an opponent for a quick match, or a side for a season.
+- Win the toss and you choose: bat first, or bowl and chase.
+- Click **Next ball** (or the ground, or space) to face a delivery. Move the
+  mouse to swing; the bat follows the pointer with a lag, and that lag is the
+  skill.
+- **Left / right arrows** (or A / D) commit to the back or front foot before
+  the ball arrives. A yorker wants the front foot; a short ball wants the back.
+  Get it wrong and the bat does not reach.
+- **Esc** leaves a match.
 
-## The architecture, in one rule
+The strip along the bottom is a broadcast lower third: score, chase, the
+current and required rates on one axis with the gap between them filled red or
+green, both batters, the over ball by ball, the bowler's figures.
+
+## How it is built
+
+**TypeScript, Phaser 4, Matter, Vite, Vitest.** No image assets: the ground,
+the crowd and every player are drawn as vectors and baked where they are
+static.
+
+### The one rule
 
 > **The simulation is pure. Phaser only draws it.**
 
-`src/sim/` imports nothing from Phaser, touches no DOM, and takes randomness from
-a seeded generator passed in. That is what makes the match model testable in
-milliseconds with no canvas, lets the other fixtures in a tournament round
-resolve headlessly and instantly, and makes a shared seed reproduce a whole
-season exactly.
+`src/sim/` imports nothing from Phaser, touches no DOM, and takes randomness
+from a seeded generator passed in. The whole match model is testable in
+milliseconds with no canvas, the other fixtures in a tournament round resolve
+headlessly and instantly, and a shared seed reproduces a season exactly.
 
-The seam is one type. `Outcome` is produced identically whether a human hit the
-ball or the model rolled it, so a single scorecard implementation consumes both
-and the two paths cannot drift apart.
+The seam is one type. `Outcome` in `src/sim/types.ts` is produced identically
+whether a human hit the ball or the model rolled it, so one scorecard consumes
+both. `src/sim/bridge.ts` closes the loop the other way: it reads what the
+player did with the bat as the same `Shot` the model would have chosen, and
+`tests/bridge.test.ts` plays the same deliveries through both paths and
+measures whether they value a ball alike.
 
-## What is honest and what is not
+### The bat is pinned, not positioned
 
-Field **distances** are true to the Laws of Cricket: a 20.12m pitch, a 68m
-boundary, and run thresholds that mean what they say.
+`src/game/physics/bat.ts` pins the handle with a Matter constraint and drives
+the blade toward the pointer with a velocity-targeting controller at 240Hz.
+It carries angular momentum, so the ball genuinely leaves faster off a full
+swing than off a nudge, and it lags the pointer. A bat teleported to the
+pointer angle each frame looks identical and feels dead.
 
-Gameplay **objects** are not, and cannot be. A cricket ball is 36mm across; at
-any scale that fits a 68m ground on screen it is a fraction of a pixel. Matter
-cannot solve a sub-pixel body at 140kph — it tunnels straight through the bat —
-and you could not see it if it could. So the bat and ball are ~4x exaggerated,
-declared in `src/game/config.ts` rather than buried as magic numbers.
+### What is honest and what is not
 
-Speeds stay real. A 138kph delivery is measured leaving the hand at 8.94 px/step
-and arriving at the batter 0.55s later, against 0.52s in the real world; the
-difference is air resistance, which is also real.
+Field distances are true to the Laws of Cricket: a 20.12m pitch, a 68m
+boundary, run thresholds that mean what they say, delivery speeds from real
+bowlers' attributes. The bat and ball are about four times life size, declared
+at the top of `src/game/config.ts`, because a 36mm ball at a scale that fits
+a 68m ground on screen is a fraction of a pixel and Matter would tunnel
+straight through the bat.
 
-## Three bugs worth remembering
+### Measured, not asserted
 
-Found by measuring rather than watching, and all three looked like "the swing
-feels bad" from the outside:
+Every number that matters was measured by stepping the physics engine by hand,
+first in the browser console and now in `tests/headless.ts`, which builds the
+scene's world from the scene's own constants and plays it in Node. The
+simulation is calibrated against real IPL aggregates over three generated
+seasons. Thresholds in tests sit under measured values, and the measured
+values are printed with `MEASURE=1 npm test`. `HANDOFF.md` keeps the tables,
+and a list of forty-odd things that looked correct and were not.
 
-1. **The outfield was painted, not simulated.** No static body at ground level,
-   so the ball fell straight through the pitch and passed ~100px *below* the
-   bat's arc. Unhittable at every timing.
-2. **The bat tunnelled through the ball.** At 60Hz a full swing moves the blade
-   tip ~22px per step — wider than the ball and wider than the blade. Matter has
-   no continuous collision detection, so the physics runs at 240Hz instead.
-3. **Rescaling per-step units by hand.** Matter normalises `setVelocity`,
-   `setAngularVelocity` and `frictionAir` against a fixed 16.667ms base delta, so
-   they must *not* be rescaled when the step rate changes. Doing it "correctly"
-   turned a 138kph delivery into a 34kph one.
+### The broadcast layer
 
-A fourth, non-bug: a backgrounded browser tab pauses `requestAnimationFrame`
-entirely, so the ball appears frozen and the physics looks broken when nothing
-is wrong. Step the engine by hand to measure it.
-
-## Why the bat is pinned rather than positioned
-
-`src/game/physics/bat.ts` pins the handle with a Matter `worldConstraint` and
-drives the blade toward the pointer with a PD controller. Two consequences, both
-deliberate:
-
-- It carries **angular momentum**, so the ball genuinely leaves faster off a full
-  swing than off a nudge — the collision solver computes that for free. A bat
-  teleported to the pointer angle each frame looks identical and feels dead,
-  because a teleported body has no velocity to transfer.
-- It **lags the pointer**. That lag is the entire skill: swing early and you are
-  through the shot, swing late and you edge it. Remove it and there is nothing
-  left to be good at.
-
-## Milestones
-
-- [x] **M1 — the batting feels right.** Matter bat on a pivot, scale-true field,
-      fielders, catches, boundaries, live score.
-- [x] **M2 — the pure sim.** Ball-by-ball model, deterministic under a seed, full
-      scorecards resolved headlessly.
-- [x] **The field is a plan.** A bearing for every shot from where the bat met
-      the ball, nine fielders per phase under the powerplay law, gaps and
-      cut-offs, wides and no-balls, a wagon wheel.
-- [ ] **M3 — the two halves meet.** Squad data ✓; you bat against a real attack
-      whose attributes change the delivery ✓; a human's shot flows back through
-      the model — not yet.
-- [x] **M4 — the tournament.** Ten fictional franchises, round robin, IPL playoff
-      bracket, points table with net run rate, saved between sessions.
-- [ ] **M5 — polish.** Sound, touch, a crowd that reacts, deploy.
-
-Teams and players are fictional throughout. Real IPL franchise names and player
-likenesses are licensed, and this is meant to be publishable.
+The scoreboard, the moments (FOUR, SIX, WICKET, a fifty, the end of an over),
+the toss and result cards, the opposition's innings replay, the team and
+season screens, and the end-of-season trophy are all DOM over the canvas,
+under `src/game/hud/`, on the design system in
+`design-system/cricketgame/MASTER.md`. Everything honours
+`prefers-reduced-motion`.
 
 ## Layout
 
 | Path | |
 | --- | --- |
-| `src/sim/` | Pure. No Phaser, no DOM. The `Outcome` seam lives here. |
-| `src/game/config.ts` | Every scale decision, including the one compromise |
-| `src/game/physics/bat.ts` | The pivot constraint and swing controller |
-| `src/game/physics/direction.ts` | Pure. The second axis: bearing, plan, projection |
-| `src/game/physics/field.ts` | Pure. Nine-man fields, reach, rolling, and the judge |
-| `src/game/view/camera.ts` | Pure. The perspective camera the ground is drawn through |
-| `src/sim/tournament.ts` | Pure. Fixtures, the table, the bracket |
+| `src/sim/` | Pure. The ball-by-ball model, the season, the `Outcome` seam, the bridge |
 | `src/data/franchises.ts` | The ten franchises and their elevens |
-| `src/game/scenes/SelectScene.ts` | Quick match or season; pick the sides |
-| `src/game/scenes/SeasonScene.ts` | The table and the fixture in hand |
-| `src/game/scenes/MatchScene.ts` | Rendering and the ball's lifecycle |
+| `src/game/config.ts` | Every scale decision and every Matter body, in one place |
+| `src/game/physics/` | The bat, the swing controller, the direction model, the field and the judge |
+| `src/game/view/camera.ts` | Pure. The pinhole camera the ground is drawn through, and the full-bleed viewport scaling |
+| `src/game/visuals/` | The stadium, the crowd, the players, the ball, the radar |
+| `src/game/hud/` | The DOM layer: the strip, the moments, the cards, the replay, the screens |
+| `src/game/scenes/` | Phaser scenes: the match, and thin shells for the team and season screens |
 | `tests/headless.ts` | The real Matter world, played in Node |
-| `tests/` | Vitest, no browser |
+| `tests/` | Vitest. Physics, calibration, the bridge, the camera, the season |
+| `design-system/` | The palette, type and motion rules the UI is built on |
+| `HANDOFF.md` | The state of the project in detail, the measurements, and the traps |
+
+## Status
+
+Done: the bat, the pure simulation, shot selection with footwork, the second
+axis and nine-man fields, a real match with a toss, a season with playoffs
+and a champion, the bridge between the two paths, a full UI pass. Left: a
+design decision on how the two paths value a ball (they are measured, and
+close, and not identical), sound, touch input, deployment, season history.
+`HANDOFF.md` has the ordered list.
+
+Teams and players are fictional throughout. Real IPL franchise names and
+player likenesses are licensed, and this is meant to be publishable; the
+fictional names have not yet been cleared against a trademark register.

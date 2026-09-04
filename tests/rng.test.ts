@@ -36,7 +36,6 @@ describe("seeded randomness", () => {
     const counts = [0, 0, 0];
     for (let i = 0; i < 30_000; i++) counts[rng.weighted([1, 3, 6])]++;
 
-    // 10/30/60, with room for sampling noise.
     expect(counts[0] / 30_000).toBeCloseTo(0.10, 1);
     expect(counts[1] / 30_000).toBeCloseTo(0.30, 1);
     expect(counts[2] / 30_000).toBeCloseTo(0.60, 1);

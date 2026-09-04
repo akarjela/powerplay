@@ -1,29 +1,8 @@
 import type { Batter, Bowler, Squad } from "../sim/player";
 
-/**
- * The ten franchises.
- *
- * Fictional names on real cities. Real IPL franchise names and player
- * likenesses are licensed, and this is meant to be publishable, so nothing
- * here is anyone. The names were chosen to avoid existing Indian sports
- * franchises as far as a reasonable check allows; they have not been cleared
- * against a trademark register, and should be before anything ships.
- *
- * Squads are the shape `src/sim/player.ts` reads: eleven in batting order, six
- * of whom bowl. The attributes were authored inside the ranges the generated
- * calibration league draws from -- a top order in the 60s and 70s, a tail in
- * the 20s, specialists around 70-80 with the ball -- so the season bands that
- * hold for the generated league hold for these too. `tests/franchises.test.ts`
- * checks that, and that no side is either hopeless or unbeatable.
- *
- * Each side has a character you should be able to feel from the crease:
- * Chennai's spinners give you nothing to hit, Hyderabad's quicks get you out,
- * Bengaluru's attack is there to be hit and their batting does the same to you.
- */
-
 export interface Franchise {
   id: string;
-  /** Three letters, for the scoreboard. */
+
   code: string;
   city: string;
   name: string;
@@ -32,10 +11,6 @@ export interface Franchise {
   squad: Squad;
 }
 
-/**
- * One player, compactly: name, power, technique, aggression -- and, for those
- * who bowl, pace, accuracy, movement, variation.
- */
 type Row =
   | readonly [string, number, number, number]
   | readonly [string, number, number, number, number, number, number, number];
@@ -68,7 +43,7 @@ function franchise(
 }
 
 export const FRANCHISES: readonly Franchise[] = [
-  // Power at the top and two genuine quicks. The side everyone wants to be.
+
   franchise("mum", "MUM", "Mumbai", "Mumbai Mariners", "Marine Lines Oval", { primary: 0x0b2a5b, secondary: 0xf2b632 }, [
     ["Arjun Malhotra", 74, 76, 58],
     ["Devansh Pillai", 70, 80, 52],
@@ -82,7 +57,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Liam Farrow", 26, 24, 72, 82, 66, 76, 64],
     ["Om Trivedi", 18, 22, 70, 30, 74, 68, 66],
   ]),
-  // Balanced, and a little dull for it. Wins the games it should.
+
   franchise("del", "DEL", "Delhi", "Delhi Sentinels", "Ridge Road Ground", { primary: 0xb91c1c, secondary: 0x94a3b8 }, [
     ["Yuvraj Chopra", 68, 78, 50],
     ["Nikhil Bedi", 64, 74, 54],
@@ -96,7 +71,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Vikrant Sahu", 24, 30, 70, 26, 76, 72, 68],
     ["Gaurav Thakur", 20, 22, 70, 74, 68, 66, 58],
   ]),
-  // Spin, accuracy, and a top order that does not get out. Slow, and hard to beat.
+
   franchise("che", "CHE", "Chennai", "Chennai Cyclones", "Marina Coastal Stadium", { primary: 0xf5c518, secondary: 0x0f766e }, [
     ["Rahul Narayanan", 62, 84, 44],
     ["Keshav Iyer", 60, 82, 48],
@@ -110,7 +85,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Mohammed Irfan", 28, 28, 68, 66, 76, 66, 60],
     ["Praveen Selvam", 20, 26, 66, 14, 82, 70, 74],
   ]),
-  // Hitters, all the way down, and a bowling attack that bleeds. Never a dull game.
+
   franchise("kol", "KOL", "Kolkata", "Kolkata Monarchs", "Maidan Park", { primary: 0x6d28d9, secondary: 0xfbbf24 }, [
     ["Sourav Dutta", 70, 68, 66],
     ["Tanmay Ghosh", 66, 64, 70],
@@ -124,7 +99,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Ritwik Chatterjee", 26, 28, 72, 24, 70, 66, 70],
     ["Pieter van Wyk", 22, 24, 72, 76, 66, 62, 58],
   ]),
-  // The best batting line-up in the league, and the worst attack. 200 plays 200.
+
   franchise("blr", "BLR", "Bengaluru", "Bengaluru Blazers", "Cubbon Fields", { primary: 0x9f1239, secondary: 0x111827 }, [
     ["Karthik Shetty", 76, 80, 56],
     ["Aditya Hegde", 72, 74, 58],
@@ -138,8 +113,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Akash Poojary", 26, 28, 70, 20, 66, 62, 64],
     ["Travis Mulder", 28, 26, 72, 74, 62, 64, 54],
   ]),
-  // The attack. Express pace, a spinner who turns it square, and a batting
-  // order that only needs 150.
+
   franchise("hyd", "HYD", "Hyderabad", "Hyderabad Falcons", "Charminar Stadium", { primary: 0xea580c, secondary: 0x1c1917 }, [
     ["Sameer Baig", 68, 78, 52],
     ["Nakul Reddy", 66, 76, 56],
@@ -153,7 +127,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Farhan Shaikh", 24, 26, 70, 78, 80, 78, 70],
     ["Hemant Chary", 18, 22, 68, 28, 82, 76, 74],
   ]),
-  // Young, brave, and inconsistent. Beats anyone on their day.
+
   franchise("jai", "JAI", "Jaipur", "Jaipur Maharajas", "Amber Fort Ground", { primary: 0xdb2777, secondary: 0x1d4ed8 }, [
     ["Lakshya Rathore", 66, 62, 68],
     ["Dhruv Choudhary", 58, 70, 56],
@@ -167,7 +141,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Shubham Verma", 24, 26, 70, 72, 64, 70, 58],
     ["Yash Saini", 20, 22, 70, 26, 66, 64, 70],
   ]),
-  // Technique and patience. Grinds out 160 and defends it with line and length.
+
   franchise("lko", "LKO", "Lucknow", "Lucknow Nawabs", "Gomti Riverside", { primary: 0x0891b2, secondary: 0x166534 }, [
     ["Avinash Tiwari", 60, 84, 40],
     ["Mohit Srivastava", 58, 80, 46],
@@ -181,7 +155,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Rohan Kashyap", 24, 30, 62, 22, 82, 70, 72],
     ["Piyush Gupta", 20, 24, 64, 30, 78, 68, 70],
   ]),
-  // Pace, pace, pace. Four seamers who bowl 140 and a top order that keeps up.
+
   franchise("amd", "AMD", "Ahmedabad", "Ahmedabad Kites", "Sabarmati Bowl", { primary: 0xf97316, secondary: 0x1e3a8a }, [
     ["Jay Patel", 68, 74, 54],
     ["Parth Desai", 64, 72, 56],
@@ -195,7 +169,7 @@ export const FRANCHISES: readonly Franchise[] = [
     ["Umesh Rabari", 24, 28, 68, 20, 74, 68, 72],
     ["Bhavik Gohil", 18, 22, 68, 78, 68, 70, 62],
   ]),
-  // One star and ten triers. The side you pick for a hard season.
+
   franchise("pun", "PUN", "Pune", "Pune Pioneers", "Deccan Gymkhana", { primary: 0x7f1d1d, secondary: 0xf8fafc }, [
     ["Omkar Deshmukh", 58, 64, 54],
     ["Sarthak Jadhav", 54, 62, 56],
@@ -217,5 +191,4 @@ export function franchiseById(id: string): Franchise {
   return found;
 }
 
-/** Every squad, for anything that wants a league rather than a franchise. */
 export const LEAGUE: readonly Squad[] = FRANCHISES.map((f) => f.squad);

@@ -32,7 +32,7 @@ import { HumanInnings } from "../humanInnings";
 import { bowl, phaseOf } from "../../sim/delivery";
 import type { Delivery, Line, Phase } from "../../sim/delivery";
 import { BALLS_PER_OVER, OVERS, chooseBowler, economyOf, oversOf, simulateInnings, strikeRateOf } from "../../sim/innings";
-import type { BowlingLine, InningsResult, InningsSummary } from "../../sim/innings";
+import type { BowlingLine, InningsResult } from "../../sim/innings";
 import { resultOf, scoreline } from "../../sim/match";
 import { makeRng } from "../../sim/rng";
 import type { Rng } from "../../sim/rng";
@@ -44,32 +44,21 @@ import { loadSeason, saveSeason } from "../season/store";
 import { fixtureById, playedFrom, recordResult } from "../../sim/tournament";
 import type { Fixture, Season } from "../../sim/tournament";
 
-/**
- * Where a delivery's line puts it across the pitch, in metres toward leg. The
- * physics has no such axis; the camera does, so a leg-stump ball is drawn a
- * touch nearer the far side and a wide visibly outside off.
- */
 const LINE_ACROSS: Record<Line, number> = { leg: 0.3, stumps: 0, off: -0.3, "wide-off": -0.8 };
 const WIDE_ACROSS = -1.4;
 
-/**
- * The rate a par first innings runs at: the calibrated ~165 over twenty. When
- * you bat first there is no required rate to be measured against, so the
- * strip measures you against this instead.
- */
 const PAR_RATE = 165 / OVERS;
 
-/** What the scene is started with: who bats, who bowls, and which fixture if any. */
+const PLAYOFF_STAGE = {
+  qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "The final",
+} as const;
+
 export interface MatchStart {
   bat?: string;
   bowl?: string;
   fixtureId?: string;
 }
 
-/**
- * Which two sides are playing. You bat; they bowl. The select or season scene
- * passes them in; the URL can still override for a quick look at any attack.
- */
 function pickSides(data?: MatchStart): { you: Franchise; them: Franchise } {
   const params = new URLSearchParams(window.location.search);
   const lookup = (id: string | null | undefined, fallback: Franchise) => {
@@ -87,29 +76,19 @@ function pickSides(data?: MatchStart): { you: Franchise; them: Franchise } {
 
 type Stage = "toss" | "watching" | "batting" | "result";
 
-/**
- * A match: a toss, two innings, a result.
- *
- * You bat one of the innings with a bat in your hand; the model plays the
- * other headlessly through `simulateInnings`, exactly as it does for every
- * fixture you are not in. Lose the toss and get put in, and you chase a
- * total that is already on the board, with the required rate on the strip.
- * Win it and bat first, and the model chases you the moment your innings
- * ends. Either way the result comes from `resultOf` on two summaries, one
- * of which happens to be yours, and if this is a fixture it goes straight
- * into the season table.
- *
- * The world is Phaser; the broadcast layer over it -- the strip, the cards,
- * the moments -- is DOM, under `src/game/hud/`. The scene assembles a model
- * for the strip each ball and otherwise knows nothing about how it looks.
- */
+function callKind(outcome: Outcome): "" | "four" | "six" | "wicket" {
+  if (outcome.wicket) return "wicket";
+  if (outcome.runs === 6) return "six";
+  if (outcome.runs === 4) return "four";
+  return "";
+}
+
 export class MatchScene extends Phaser.Scene {
-  /** The camera for the current viewport; rebuilt on resize. */
   private camera: Camera = MATCH_CAMERA;
   private view: Viewport = { width: CANVAS.width, height: CANVAS.height };
   private stadium?: Phaser.GameObjects.Image;
   private crowd?: Crowd;
-  /** Textures the last layout baked, freed when the next one replaces them. */
+
   private bakedKeys: string[] = [];
   private stumps: Phaser.GameObjects.Graphics[] = [];
   private standsFlash?: Phaser.GameObjects.Rectangle;
@@ -129,14 +108,14 @@ export class MatchScene extends Phaser.Scene {
   private bouncedAfterStrike = false;
   private landingM = 0;
   private bearing: Bearing = 0;
-  /** The hardest the blade swung at this ball, 0..1 of the cap. The bridge reads it as commitment. */
+
   private effort = 0;
 
   private innings = new HumanInnings();
   private rng: Rng = makeRng("powerplay");
   private delivery?: Delivery;
   private batsman!: Phaser.GameObjects.Container;
-  /** Who is holding the bat. The figure and the blade change with him. */
+
   private striker?: Batter;
   private stance: Stance = "neutral";
   private keys!: Record<"front" | "back" | "frontAlt" | "backAlt", Phaser.Input.Keyboard.Key>;
@@ -148,13 +127,13 @@ export class MatchScene extends Phaser.Scene {
   private youBatFirst = true;
   private theirInnings?: InningsResult;
   private watching?: InningsView;
-  /** Their first innings has been watched; the toss card now takes guard. */
+
   private watched = false;
 
   private bowler?: Bowler;
   private lastBowler: Bowler | null = null;
   private bowling = new Map<string, BowlingLine>();
-  /** Runs conceded by the bowler in the over in progress, for maidens. */
+
   private overRunsAgainst = 0;
   private currentOver = -1;
   private phase: Phase = "powerplay";
@@ -177,7 +156,7 @@ export class MatchScene extends Phaser.Scene {
         this.fixture = fixtureById(season, data.fixtureId);
       }
     }
-    // A fixture replays from its seed; a quick match is different every time.
+
     this.rng = makeRng(this.fixture && this.season ? `${this.season.seed}:${this.fixture.id}` : `quick-${Date.now()}`);
     this.innings = new HumanInnings(this.sides.you.squad);
     this.bowling = new Map();
@@ -193,6 +172,8 @@ export class MatchScene extends Phaser.Scene {
     this.ball = undefined;
     this.awaitingResult = false;
     this.stance = "neutral";
+
+    this.striker = undefined;
     this.stage = "toss";
     this.theirInnings = undefined;
     this.watching = undefined;
@@ -203,11 +184,6 @@ export class MatchScene extends Phaser.Scene {
     const width = WORLD_WIDTH - WORLD_LEFT;
     this.matter.world.setBounds(WORLD_LEFT, -3000, width, 4000);
 
-    /**
-     * The outfield, as physics rather than just paint. Without this the ball
-     * falls straight through the drawn pitch and passes ~100px below the
-     * bat's arc, which reads as "the swing is broken".
-     */
     this.matter.add.rectangle(WORLD_LEFT + width / 2, GROUND_Y + 60, width, 120, {
       isStatic: true,
       label: "ground",
@@ -216,7 +192,6 @@ export class MatchScene extends Phaser.Scene {
 
     this.bat = new Bat(this, PIVOT.x, PIVOT.y);
     this.batGfx = makeBat(this).setDepth(depthFor(0, 2));
-    this.striker = undefined;
     this.takeGuard(this.innings.atTheCrease[0]?.batter ?? this.sides.you.squad.batters[0]);
     this.ballSprite = new BallSprite(this);
     this.radar = new Radar(this, 0, 0, 70);
@@ -238,11 +213,6 @@ export class MatchScene extends Phaser.Scene {
       clearMoment();
     });
 
-    /**
-     * Bounce and contact come from collision events, not from sampling. The
-     * physics steps 240 times a second and `update()` runs 60; a struck ball
-     * can touch down and be airborne again inside one frame.
-     */
     this.matter.world.on("collisionstart", (event: { pairs: { bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }[] }) => {
       for (const pair of event.pairs) {
         const labels = [pair.bodyA.label, pair.bodyB.label];
@@ -283,15 +253,6 @@ export class MatchScene extends Phaser.Scene {
     this.toss();
   }
 
-  // -- the viewport -------------------------------------------------------------
-
-  /**
-   * Everything that depends on the size of the window: the camera, the baked
-   * ground, the stumps and the fielders. Called once from `create` and again
-   * on every resize. The batter, the bat and the ball are placed through the
-   * camera every frame and need nothing here; the strip is CSS and lays
-   * itself out.
-   */
   private layout(): void {
     this.view = { width: this.scale.width, height: this.scale.height };
     this.camera = cameraForViewport(this.view);
@@ -302,18 +263,17 @@ export class MatchScene extends Phaser.Scene {
     this.stadium = drawStadium(this, this.camera, this.sides.you.colours, this.view);
     this.crowd = new Crowd(this, this.camera, this.sides.you.colours, this.view, -98);
     this.bakedKeys = [this.stadium.texture.key, ...this.crowd.textureKeys];
-    // A resize bakes at the new size; the old size's textures are dead weight.
+
     for (const key of stale) if (!this.bakedKeys.includes(key)) this.textures.remove(key);
     for (const g of this.stumps) g.destroy();
     this.stumps = [
-      // The striker stands a stride in front of his stumps; they draw behind him.
-      drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, 0.5)),
-      drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, -0.5)),
+
+      drawStumps(this, this.camera, BATTER_X, depthFor(0, 0.5)),
+      drawStumps(this, this.camera, BOWLER_X, depthFor(0, -0.5)),
     ];
     this.setField(this.field);
     this.placeKeeper();
 
-    // The stands, for a flash of light on a boundary: everything above the rope.
     const rope = this.camera.ground(0, -68)?.sy ?? this.view.height * 0.45;
     this.standsFlash?.destroy();
     this.standsFlash = this.add.rectangle(0, 0, this.view.width, rope, 0xfff2cc, 0)
@@ -322,13 +282,6 @@ export class MatchScene extends Phaser.Scene {
     this.radar.setPosition(this.view.width - 96, 96);
   }
 
-  // -- the match --------------------------------------------------------------
-
-  /**
-   * The toss. Win it and the choice is yours -- bat, or bowl and chase. Lose
-   * it and the other side mostly chooses to chase, as sides do. Either way
-   * `decide` takes it from there.
-   */
   private toss(): void {
     const { you, them } = this.sides;
     const youWon = this.rng.chance(0.5);
@@ -336,9 +289,8 @@ export class MatchScene extends Phaser.Scene {
     this.renderHud();
 
     if (youWon) {
-      // Your call. Sides mostly chase, and so may you.
       showCard({
-        title: this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`,
+        title: this.matchTitle(),
         lines: [{ text: `${you.name} won the toss.`, strong: true }, { text: "Bat first and set a total, or bowl and chase whatever they make." }],
         prompt: "",
         colours: you.colours,
@@ -354,7 +306,6 @@ export class MatchScene extends Phaser.Scene {
     this.decide(chase, `${them.name} won the toss and chose to ${chase ? "field" : "bat"}.`);
   }
 
-  /** The toss is settled: who bats first. If it is them, their innings is rolled now and is your target. */
   private decide(youBatFirst: boolean, said: string): void {
     const { you, them } = this.sides;
     this.youBatFirst = youBatFirst;
@@ -370,7 +321,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.stage = "toss";
     showCard({
-      title: this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`,
+      title: this.matchTitle(),
       lines,
       prompt: youBatFirst ? "Take guard" : "Watch their innings",
       colours: you.colours,
@@ -378,11 +329,6 @@ export class MatchScene extends Phaser.Scene {
     this.renderHud();
   }
 
-  /**
-   * Their innings, ball by ball, over the ground. The strip is yours and
-   * comes back when it is your turn. `then` runs when the replay ends or is
-   * skipped.
-   */
   private watch(target: number | undefined, then: () => void): void {
     const { you, them } = this.sides;
     this.stage = "watching";
@@ -401,76 +347,81 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  private fixtureTitle(): string {
-    const f = this.fixture!;
-    const stage = f.stage === "league" ? `Round ${f.round}` : ({
-      qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "The final",
-    } as const)[f.stage];
+  private matchTitle(): string {
+    const f = this.fixture;
+    if (!f) return `${this.sides.you.name} v ${this.sides.them.name}`;
+    const stage = f.stage === "league" ? `Round ${f.round}` : PLAYOFF_STAGE[f.stage];
     return `${stage}: ${franchiseById(f.home).name} v ${franchiseById(f.away).name}`;
   }
 
   private onClick(): void {
-    if (this.stage === "toss") {
-      if (!this.youBatFirst && this.theirInnings && !this.watched) {
-        const total = this.theirInnings;
-        this.watch(undefined, () => {
-          this.stage = "toss";
-          showCard({
-            title: `${this.sides.them.name} ${scoreline(total)}`,
-            lines: [{ text: `You need ${total.runs + 1} to win.`, strong: true }],
-            prompt: "Take guard",
-            colours: this.sides.you.colours,
-          }, () => this.onClick());
-          // The next click on the card takes guard rather than re-watching.
-          this.theirInnings = total;
-          this.watched = true;
-        });
+    switch (this.stage) {
+      case "toss":
+        if (!this.youBatFirst && this.theirInnings && !this.watched) this.watchTheirInnings();
+        else this.startBatting();
         return;
-      }
-      hideCard();
-      this.stage = "batting";
-      this.scoreboard.say("Move the mouse to swing. Arrow keys commit a foot.");
-      this.renderHud();
-      return;
+      case "watching":
+        return;
+      case "result":
+        this.leave();
+        return;
+      case "batting":
+        if (this.innings.complete) return;
+        if (!this.ball && !this.awaitingResult) this.bowl();
+        return;
     }
-    if (this.stage === "watching") return;
-    if (this.stage === "result") {
-      this.leave();
-      return;
-    }
-    if (this.innings.complete) return;
-    if (!this.ball && !this.awaitingResult) this.bowl();
   }
 
-  /** Your innings is over. The other one happens now if it has not already, and you watch it. */
+  private watchTheirInnings(): void {
+    const total = this.theirInnings!;
+    this.watch(undefined, () => {
+      this.stage = "toss";
+      showCard({
+        title: `${this.sides.them.name} ${scoreline(total)}`,
+        lines: [{ text: `You need ${total.runs + 1} to win.`, strong: true }],
+        prompt: "Take guard",
+        colours: this.sides.you.colours,
+      }, () => this.onClick());
+
+      this.watched = true;
+    });
+  }
+
+  private startBatting(): void {
+    hideCard();
+    this.stage = "batting";
+    this.scoreboard.say("Move the mouse to swing. Arrow keys commit a foot.");
+    this.renderHud();
+  }
+
   private finishMatch(): void {
-    const { you, them } = this.sides;
-    const yours: InningsSummary = this.innings.summary;
-    if (this.youBatFirst) {
-      this.theirInnings = simulateInnings(them.squad, you.squad, this.rng, { target: yours.runs + 1 });
-      this.watch(yours.runs + 1, () => this.settle());
-    } else {
+    if (!this.youBatFirst) {
       this.settle();
+      return;
     }
+    const { you, them } = this.sides;
+    const target = this.innings.summary.runs + 1;
+    this.theirInnings = simulateInnings(them.squad, you.squad, this.rng, { target });
+    this.watch(target, () => this.settle());
   }
 
-  /** Both innings are in. The result, and the season if there is one. */
   private settle(): void {
     const { you, them } = this.sides;
-    const yours: InningsSummary = this.innings.summary;
-    const first: InningsSummary = this.youBatFirst ? yours : this.theirInnings!;
-    const second: InningsSummary = this.youBatFirst ? this.theirInnings! : yours;
+    const yours = this.innings.summary;
+    const theirs = this.theirInnings!;
+    const first = this.youBatFirst ? yours : theirs;
+    const second = this.youBatFirst ? theirs : yours;
 
     const result = resultOf(first, second);
     const won = result.winner?.id === you.id;
+    const best = this.innings.battingLines
+      .slice()
+      .sort((a, b) => b.runs - a.runs)
+      .slice(0, 3);
     const lines = [
-      { text: `${you.code} ${scoreline(yours)}     ${them.code} ${scoreline(this.theirInnings!)}`, strong: true },
+      { text: `${you.code} ${scoreline(yours)}     ${them.code} ${scoreline(theirs)}`, strong: true },
       { text: "" },
-      ...this.innings.battingLines
-        .slice()
-        .sort((a, b) => b.runs - a.runs)
-        .slice(0, 3)
-        .map((l) => ({ text: `${l.batter.name}  ${l.runs}${l.dismissal ? "" : "*"} (${l.balls})  SR ${strikeRateOf(l).toFixed(0)}` })),
+      ...best.map((l) => ({ text: `${l.batter.name}  ${l.runs}${l.dismissal ? "" : "*"} (${l.balls})  SR ${strikeRateOf(l).toFixed(0)}` })),
     ];
 
     if (this.season && this.fixture) {
@@ -494,26 +445,10 @@ export class MatchScene extends Phaser.Scene {
     this.scene.start(this.season ? "season" : "select");
   }
 
-  // -- the strip ----------------------------------------------------------------
-
   private renderHud(): void {
     const innings = this.innings;
     const { you, them } = this.sides;
     const need = innings.required;
-
-    const action: ScoreboardModel["action"] = this.stage === "toss"
-      ? { label: "Take guard", enabled: true, waiting: true }
-      : this.stage === "watching"
-        ? { label: "Watching", enabled: false, waiting: false }
-        : this.stage === "result"
-        ? { label: this.season ? "To the table" : "To the teams", enabled: true, waiting: true }
-        : innings.complete
-          ? { label: "Innings over", enabled: false, waiting: false }
-          : this.ball
-            ? { label: "In play", enabled: false, waiting: false }
-            : this.awaitingResult
-              ? { label: "Next ball", enabled: false, waiting: false }
-              : { label: "Next ball", enabled: true, waiting: true };
 
     const line = this.bowler ? this.bowlingLine(this.bowler) : undefined;
 
@@ -544,9 +479,25 @@ export class MatchScene extends Phaser.Scene {
         economy: economyOf(line),
         speedKph: this.delivery?.speed,
       },
-      action,
+      action: this.actionState(),
       stance: this.stance,
     });
+  }
+
+  private actionState(): ScoreboardModel["action"] {
+    switch (this.stage) {
+      case "toss":
+        return { label: "Take guard", enabled: true, waiting: true };
+      case "watching":
+        return { label: "Watching", enabled: false, waiting: false };
+      case "result":
+        return { label: this.season ? "To the table" : "To the teams", enabled: true, waiting: true };
+      case "batting":
+        if (this.innings.complete) return { label: "Innings over", enabled: false, waiting: false };
+        if (this.ball) return { label: "In play", enabled: false, waiting: false };
+        if (this.awaitingResult) return { label: "Next ball", enabled: false, waiting: false };
+        return { label: "Next ball", enabled: true, waiting: true };
+    }
   }
 
   private bowlingLine(bowler: Bowler): BowlingLine {
@@ -558,14 +509,6 @@ export class MatchScene extends Phaser.Scene {
     return line;
   }
 
-  // -- the striker ---------------------------------------------------------------
-
-  /**
-   * A batter takes guard: his face and build on the figure, and his power in
-   * the hands (see `contactDamping`). Called for every ball and does nothing
-   * if the same man is still there. Technique is not consulted: on this path
-   * it is the player's own timing and footwork; see swing.ts.
-   */
   private takeGuard(batter: Batter): void {
     if (this.striker?.id === batter.id) return;
     this.striker = batter;
@@ -573,7 +516,6 @@ export class MatchScene extends Phaser.Scene {
     this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(0, 1));
   }
 
-  /** The keeper, a few metres behind the stumps, crouched. */
   private placeKeeper(): void {
     this.keeper?.destroy();
     const p = this.camera.project(Camera.fromPhysics(BATTER_X - m(3.2), GROUND_Y, 0.3));
@@ -582,8 +524,6 @@ export class MatchScene extends Phaser.Scene {
     this.keeper = drawKeeper(this, this.sides.them.colours, lookFor(squad[squad.length - 1].id))
       .setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(0.3, 0));
   }
-
-  // -- the field and the attack ------------------------------------------------
 
   private setField(field: Fielder[]): void {
     this.field = field;
@@ -654,8 +594,6 @@ export class MatchScene extends Phaser.Scene {
     clearMoment();
     this.renderHud();
   }
-
-  // -- the frame --------------------------------------------------------------
 
   update(): void {
     this.readStance();
@@ -753,17 +691,7 @@ export class MatchScene extends Phaser.Scene {
     const striker = this.innings.atTheCrease[0];
     const runsBefore = striker?.runs ?? 0;
     this.innings.record(outcome);
-
-    if (this.bowler) {
-      const line = this.bowlingLine(this.bowler);
-      const legal = countsAsBall(outcome);
-      if (legal) line.balls++;
-      const conceded = runsAgainstBowler(outcome);
-      line.runs += conceded;
-      this.overRunsAgainst += conceded;
-      if (outcome.wicket && outcome.wicket !== "run-out") line.wickets++;
-      if (legal && line.balls % BALLS_PER_OVER === 0 && this.overRunsAgainst === 0) line.maidens++;
-    }
+    this.creditBowler(outcome);
 
     if (this.struck && this.ball) {
       const downfield = metresDownfield(this.ball.position.x);
@@ -784,7 +712,18 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** The ball is gone: from the world, from the screen, from the radar. */
+  private creditBowler(outcome: Outcome): void {
+    if (!this.bowler) return;
+    const line = this.bowlingLine(this.bowler);
+    const legal = countsAsBall(outcome);
+    const conceded = runsAgainstBowler(outcome);
+    if (legal) line.balls++;
+    line.runs += conceded;
+    this.overRunsAgainst += conceded;
+    if (outcome.wicket && outcome.wicket !== "run-out") line.wickets++;
+    if (legal && line.balls % BALLS_PER_OVER === 0 && this.overRunsAgainst === 0) line.maidens++;
+  }
+
   private retireBall(): void {
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
@@ -792,14 +731,9 @@ export class MatchScene extends Phaser.Scene {
     this.radar.hideBall();
   }
 
-  /**
-   * What the ball was, as a broadcast would say it: the call on the strip,
-   * a moment for anything worth one, and the game feel that goes with it.
-   * Every effect is under 600ms and none of them run under reduced motion.
-   */
   private announce(outcome: Outcome, strikerId: string | undefined, runsBefore: number): void {
     const innings = this.innings;
-    const kind = outcome.wicket ? "wicket" : outcome.runs === 6 ? "six" : outcome.runs === 4 ? "four" : "";
+    const kind = callKind(outcome);
     this.scoreboard.say(
       innings.complete ? `${innings.closedBecause}: ${innings.score} (${innings.oversText})` : outcome.description,
       kind,
@@ -808,25 +742,24 @@ export class MatchScene extends Phaser.Scene {
 
     const calm = reducedMotion();
     let busyUntil = 0;
-    if (outcome.wicket) {
+    if (kind === "wicket") {
       showMoment({ kind: "wicket", how: outcome.description });
       busyUntil = 1250;
       this.crowd?.react("wicket");
       if (!calm) this.cameras.main.shake(260, 0.009);
-    } else if (outcome.runs === 6) {
+    } else if (kind === "six") {
       showMoment({ kind: "six" });
       busyUntil = 1150;
       this.crowd?.react("six");
       this.boundaryFlash(0.3);
       if (!calm) this.pushIn();
-    } else if (outcome.runs === 4) {
+    } else if (kind === "four") {
       showMoment({ kind: "four" });
       busyUntil = 900;
       this.crowd?.react("four");
       this.boundaryFlash(0.2);
     }
 
-    // A fifty or a hundred is earned; it follows the boundary that brought it up.
     const after = strikerId ? innings.battingLines.find((l) => l.batter.id === strikerId) : undefined;
     if (after && !outcome.extra) {
       for (const mark of [50, 100] as const) {
@@ -837,7 +770,6 @@ export class MatchScene extends Phaser.Scene {
       }
     }
 
-    // End of the over: a lower third, once the ball's own moment has had its say.
     if (countsAsBall(outcome) && innings.balls % BALLS_PER_OVER === 0 && !innings.complete) {
       this.time.delayedCall(Math.max(busyUntil, 350), () => {
         if (!this.ball) showMoment({ kind: "over", number: innings.thisOverNumber, balls: innings.thisOver, runs: innings.thisOverRuns });
@@ -845,7 +777,6 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** The stands light up for a moment on a boundary. */
   private boundaryFlash(peak: number): void {
     if (!this.standsFlash || reducedMotion()) return;
     this.tweens.killTweensOf(this.standsFlash);
@@ -853,7 +784,6 @@ export class MatchScene extends Phaser.Scene {
     this.tweens.add({ targets: this.standsFlash, alpha: 0, duration: 420, ease: "Quad.easeOut" });
   }
 
-  /** A slight push-in on a six: 3.5% for a quarter of a second, then back. */
   private pushIn(): void {
     const cam = this.cameras.main;
     this.tweens.killTweensOf(cam);

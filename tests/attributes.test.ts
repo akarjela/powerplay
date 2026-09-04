@@ -9,17 +9,6 @@ import { MAX_SWING_SPEED } from "../src/game/config";
 import type { Stance } from "../src/game/config";
 import type { Bowler } from "../src/sim/player";
 
-/**
- * Your batters' power at the crease, measured through the harness.
- *
- * Same sweep as physics.test.ts -- the random player, the same seed for each
- * side of the A/B so the deliveries and the swings are identical and only
- * the batter differs. Power should move the boundary rate and nothing should
- * move at average, because the whole physics was tuned there. Technique was
- * tried two ways and measured inert or wrong; the story is in swing.ts.
- * MEASURE=1 prints the table.
- */
-
 const RANA: Bowler = { id: "rana", name: "Rana", pace: 62, accuracy: 64, movement: 58, variation: 55 };
 const STANCES: Stance[] = ["front", "back", "neutral"];
 const measure = process.env.MEASURE === "1";
@@ -46,7 +35,7 @@ describe("attributes in the physics", () => {
     expect(powerFactor(0.5)).toBeCloseTo(1, 9);
     expect(contactDamping(MAX_SWING_SPEED)).toBeCloseTo(1.0, 9);
     expect(contactDamping(0)).toBeCloseTo(0.55, 9);
-    // A block stays a block whoever plays it, near enough.
+
     expect(contactDamping(0, 1)).toBeLessThan(0.65);
   });
 
@@ -70,9 +59,7 @@ describe("attributes in the physics", () => {
   it("power clears the rope more often, and meets the ball no more often", () => {
     const a = stats("", strong);
     const b = stats("", weak);
-    // Measured: boundaries 21.1% against 17.0%, sixes 3.5% against 2.3%,
-    // 1.49 runs a ball against 1.32. Contact is identical by construction:
-    // power acts after the bat has met the ball.
+
     expect(a.boundaries).toBeGreaterThan(b.boundaries + 0.02);
     expect(a.sixes).toBeGreaterThan(b.sixes);
     expect(a.runsPerBall).toBeGreaterThan(b.runsPerBall + 0.08);

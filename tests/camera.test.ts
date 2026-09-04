@@ -3,12 +3,6 @@ import { describe, expect, it } from "vitest";
 import { Camera, MATCH_CAMERA, depthFor, cameraForViewport, viewportScale } from "../src/game/view/camera";
 import { BATTER_X, BOUNDARY, CANVAS, GROUND_Y, PX_PER_METRE } from "../src/game/config";
 
-/**
- * The camera is arithmetic and the arithmetic has consequences the scene
- * relies on: the pitch stays square to the frame, the leg side recedes, the
- * pointer maps back onto the bat's plane exactly. Pin them here.
- */
-
 const cam = MATCH_CAMERA;
 
 describe("the match camera", () => {
@@ -23,7 +17,6 @@ describe("the match camera", () => {
   });
 
   it("sees the pitch square-on: no foreshortening along it", () => {
-    // Equal steps along the pitch are equal steps on screen.
     const a = cam.ground(0, 0)!;
     const b = cam.ground(10, 0)!;
     const c = cam.ground(20, 0)!;
@@ -44,7 +37,6 @@ describe("the match camera", () => {
   });
 
   it("draws the ball at a size you can see", () => {
-    // 12px in the physics; the side-on game drew it 1:1.
     const { scale } = cam.project(Camera.fromPhysics(BATTER_X, GROUND_Y - 40))!;
     expect(12 * scale).toBeGreaterThan(9);
     expect(12 * scale).toBeLessThan(14);
@@ -64,7 +56,7 @@ describe("the match camera", () => {
   it("maps the pointer back onto the bat's plane exactly", () => {
     const pivot = { physicsX: BATTER_X + 22, physicsY: GROUND_Y - 62 };
     const projected = cam.project(Camera.fromPhysics(pivot.physicsX, pivot.physicsY))!;
-    // A point 100px right and 50px down of the pivot in physics space...
+
     const there = cam.project(Camera.fromPhysics(pivot.physicsX + 100, pivot.physicsY + 50))!;
     const back = Camera.toPhysicsPlane(there.sx, there.sy, { ...pivot, projected });
     expect(back.x).toBeCloseTo(pivot.physicsX + 100, 6);
@@ -90,12 +82,11 @@ describe("cameraForViewport", () => {
 
   it("covers rather than contains, until the straight rope would leave the frame", () => {
     expect(viewportScale({ width: 2560, height: 1080 })).toBe(2);
-    // 16:10 already brushes the cap: measured 1.150 against a 1.25 cover.
+
     const wide = viewportScale({ width: 1440, height: 900 });
     expect(wide).toBeGreaterThan(1440 / 1280);
     expect(wide).toBeLessThan(900 / 720);
-    // 4:3 is too tall to cover by height without cropping the off side past
-    // the rope; it scales as far as the rope allows and reveals sky instead.
+
     const tall = viewportScale({ width: 1024, height: 768 });
     expect(tall).toBeGreaterThan(1024 / 1280);
     expect(tall).toBeLessThan(768 / 720);
@@ -106,10 +97,10 @@ describe("cameraForViewport", () => {
       const cam = cameraForViewport(view);
       const s = viewportScale(view);
       const p = cam.project(Camera.fromPhysics(BATTER_X, GROUND_Y))!;
-      // Same fraction of the frame as on the design frame.
+
       expect(p.sx / view.width).toBeCloseTo(feet.sx / CANVAS.width, 6);
       expect(p.sy / view.height).toBeCloseTo(feet.sy / CANVAS.height, 6);
-      // And every other point is s times as far from the feet.
+
       const rope = Camera.fromPlan(BOUNDARY / PX_PER_METRE, 0, 0);
       const r0 = MATCH_CAMERA.project(rope)!;
       const r1 = cam.project(rope)!;

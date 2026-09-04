@@ -1,15 +1,6 @@
 import type { BallMark } from "../humanInnings";
 import type { Stance } from "../config";
-import { el, hex, hudRoot } from "./dom";
-
-/**
- * The strip: the bottom scoreboard, as a broadcast lower third.
- *
- * It is rendered from a model the scene assembles each ball, and it owns no
- * game state. The one thing it does back to the scene is the primary action
- * -- the next-ball button -- which is the only element on the strip that
- * takes the pointer. Spec: design-system/cricketgame/pages/match-hud.md.
- */
+import { ballChip, el, hex, hudRoot } from "./dom";
 
 export interface ScoreboardModel {
   team: { code: string; primary: number; secondary: number };
@@ -20,13 +11,13 @@ export interface ScoreboardModel {
   overs: string;
   runRate: number;
   phase: string;
-  /** Chasing. */
+
   target?: number;
   need?: { runs: number; balls: number };
   requiredRate?: number;
-  /** Batting first: what the current rate reaches over twenty. */
+
   projected?: number;
-  /** Batting first: the rate a par first innings runs at, for the axis. */
+
   par?: number;
   batters: { name: string; runs: number; balls: number; strikeRate: number; onStrike: boolean }[];
   over: { number: number; balls: readonly BallMark[]; runs: number };
@@ -156,7 +147,6 @@ export class Scoreboard {
     this.n.runs.textContent = m.allOut ? `${m.runs}` : `${m.runs}/${m.wickets}`;
     this.n.overs.textContent = m.overs;
 
-    // Chase, or the innings you are setting.
     if (m.need && m.target !== undefined) {
       this.n.chaseLabel.textContent = `Target ${m.target}`;
       this.n.chaseBig.replaceChildren("Need ", strong(String(m.need.runs)), " off ", strong(String(m.need.balls)));
@@ -167,8 +157,6 @@ export class Scoreboard {
       this.n.chaseSub.textContent = m.phase;
     }
 
-    // The comparison. One axis from 0 to a ceiling both rates fit under.
-    // Chasing, the marker is the required rate; setting, it is par.
     const rrr = m.requiredRate ?? m.par;
     const isPar = m.requiredRate === undefined && m.par !== undefined;
     const ceiling = Math.max(12, m.runRate + 1, (rrr ?? 0) + 2);
@@ -201,12 +189,9 @@ export class Scoreboard {
       this.n.ratesLabel.textContent = "Run rate";
     }
 
-    // Batters.
-    const [on, non] = [m.batters.find((b) => b.onStrike), m.batters.find((b) => !b.onStrike)];
-    fillBatter(this.rowOn, on);
-    fillBatter(this.rowNon, non);
+    fillBatter(this.rowOn, m.batters.find((b) => b.onStrike));
+    fillBatter(this.rowNon, m.batters.find((b) => !b.onStrike));
 
-    // This over.
     this.n.overLabel.textContent = `Over ${m.over.number}`;
     this.n.overRuns.textContent = String(m.over.runs);
     const marks = m.over.balls;
@@ -214,14 +199,12 @@ export class Scoreboard {
     this.balls.replaceChildren(...Array.from({ length: slots }, (_, i) => {
       const mark = marks[i];
       if (!mark) return el("span", "ball empty");
-      const kind = mark.kind === "boundary" && mark.label === "6" ? "six" : mark.kind;
-      const node = el("span", `ball ${kind}`, mark.label);
+      const node = ballChip(mark);
       if (i === marks.length - 1 && marks.length !== this.lastBallCount) node.classList.add("new");
       return node;
     }));
     this.lastBallCount = marks.length;
 
-    // Bowler.
     if (m.bowler) {
       const b = m.bowler;
       this.n.bowlerName.textContent = b.name;
@@ -235,7 +218,6 @@ export class Scoreboard {
       this.n.speed.textContent = "";
     }
 
-    // The action.
     this.button.textContent = m.action.label;
     this.button.disabled = !m.action.enabled;
     this.button.classList.toggle("is-waiting", m.action.waiting && m.action.enabled);
@@ -243,13 +225,11 @@ export class Scoreboard {
     this.foot.className = `foot ${m.stance}`;
   }
 
-  /** Off the screen while something else has the floor, and back. */
   setVisible(visible: boolean): void {
     this.strip.classList.toggle("is-on", visible);
     if (!visible) this.call.classList.remove("is-on");
   }
 
-  /** The commentator's line for the last ball. */
   say(text: string, kind: "" | "four" | "six" | "wicket" = "", ms = 1600): void {
     window.clearTimeout(this.callTimer);
     this.call.textContent = text;

@@ -1,11 +1,3 @@
-/*
- * The broadcast layer. Tokens from design-system/cricketgame/MASTER.md.
- *
- * Everything here sits over the canvas in #hud, which never takes the pointer:
- * the swing is a mouse move over the canvas and must not be intercepted. The
- * one exception is the primary action, which opts back in.
- */
-
 :root {
   --ink-0: #05070c;
   --ink-1: #0b0f1a;
@@ -39,8 +31,6 @@
 }
 
 #hud * { box-sizing: border-box; }
-
-/* ---------------------------------------------------------------- the strip */
 
 .strip {
   position: absolute;
@@ -84,25 +74,21 @@
 .dim { color: var(--fg-dim); }
 .mute { color: var(--fg-mute); }
 
-/* The flag: the batting side's colours on the leading edge. */
 .flag {
   padding: 0;
   border: 0;
   background: linear-gradient(to right, var(--flag-primary) 0 6px, var(--flag-secondary) 6px 9px);
 }
 
-/* Score: code small, the score huge, the overs beside it. */
 .score { flex-direction: row; align-items: baseline; gap: clamp(8px, 1vw, 16px); }
 .score .code { font-family: var(--display); font-size: var(--t-big); color: var(--fg-dim); }
 .score .runs { font-family: var(--display); font-size: var(--t-score); line-height: 0.9; }
 .score .overs { display: flex; flex-direction: column; align-items: flex-start; }
 .score .overs .n { font-family: var(--display); font-size: var(--t-big); line-height: 0.9; }
 
-/* Chase: the two numbers a chaser actually reads. */
 .chase .big { font-family: var(--display); font-size: var(--t-big); line-height: 0.95; }
 .chase .big b { color: var(--live); font-weight: 400; }
 
-/* Rates: the comparison. One axis; CRR is a bar, RRR a marker, the gap fills. */
 .rates { gap: 4px; }
 .rates .axis {
   position: relative;
@@ -144,7 +130,6 @@
 .rates.is-pressure { box-shadow: inset 0 -3px 0 var(--behind); }
 .rates.is-pressure .label { color: var(--behind); }
 
-/* Batters. */
 .batters .row {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto auto auto;
@@ -159,7 +144,6 @@
 .batters .r { font-family: var(--display); font-size: calc(var(--t-data) * 1.35); line-height: 0.9; }
 .batters .b, .batters .sr { font-size: var(--t-label); color: var(--fg-dim); letter-spacing: 0.04em; }
 
-/* This over. */
 .balls { display: flex; gap: 4px; align-items: center; }
 .balls .ball {
   width: clamp(18px, 2.6vh, 24px);
@@ -186,12 +170,10 @@
 .over .head { display: flex; justify-content: space-between; gap: 10px; }
 .over .head .fig { font-family: var(--display); color: var(--fg); font-size: calc(var(--t-data) * 1.2); line-height: 1; }
 
-/* Bowler. */
 .bowler .name { font-weight: 600; }
 .bowler .figs { font-family: var(--display); font-size: var(--t-big); line-height: 0.9; }
 .bowler .sub { display: flex; gap: 12px; }
 
-/* The primary action. */
 .action { align-items: stretch; gap: 4px; padding-right: clamp(10px, 1.2vw, 20px); }
 .action button {
   pointer-events: auto;
@@ -221,7 +203,6 @@
 .action .stance .foot.back { color: var(--live); }
 .action .stance .keys { color: var(--fg-mute); }
 
-/* The call: the last ball, said once, just above the strip on the left. */
 .call {
   position: absolute;
   left: 9px;
@@ -243,7 +224,6 @@
 .call.six { border-left-color: var(--six); }
 .call.wicket { border-left-color: var(--wicket); }
 
-/* Narrow viewports: shed the least important cells first. */
 @media (max-width: 1100px) {
   .action .stance .keys, .bowler .sub .econ { display: none; }
 }
@@ -251,8 +231,6 @@
   .batters .row.non, .bowler { display: none; }
   .strip { grid-template-columns: 9px auto auto minmax(120px, 1fr) auto auto auto; }
 }
-
-/* ---------------------------------------------------------------- the cards */
 
 .scrim {
   position: absolute; inset: 0;
@@ -293,8 +271,6 @@
 .card .choices button.ghost:hover { background: var(--line); }
 .card .choices button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
-/* ---------------------------------------------------------------- moments */
-
 .moment {
   position: absolute; inset: 0;
   display: grid;
@@ -320,7 +296,6 @@
   margin-top: clamp(8px, 1.5vh, 16px);
 }
 
-/* FOUR: clean and quick, a band sweeps out under the word. */
 .moment.four .word { color: var(--four); animation: four-word 900ms var(--ease) forwards; }
 .moment.four .band {
   position: absolute; left: -10%; right: -10%; top: 50%;
@@ -344,7 +319,6 @@
   100% { transform: translateY(-50%) skewY(-4deg) scaleX(1); opacity: 0; }
 }
 
-/* SIX: explosive. A white flash, a shock ring, the word bursts and spreads. */
 .moment.six .word { color: var(--six); animation: six-word 1150ms var(--ease) forwards; }
 .moment.six .flash { position: absolute; inset: 0; background: #fff; animation: flash 220ms ease-out forwards; }
 .moment.six .ring {
@@ -365,7 +339,6 @@
 @keyframes flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
 @keyframes ring { 0% { transform: scale(0.2); opacity: 0.9; } 100% { transform: scale(8); opacity: 0; } }
 
-/* WICKET: a gut punch. The frame dims, the word drops and stops dead, a red bar cuts across. */
 .moment.wicket { background: rgba(0, 0, 0, 0); animation: dim 1250ms var(--ease) forwards; }
 .moment.wicket .word { color: var(--wicket); animation: wicket-word 1250ms cubic-bezier(0.7, 0, 0.2, 1) forwards; }
 .moment.wicket .bar {
@@ -388,7 +361,6 @@
 @keyframes cut { 0%, 7% { transform: scaleX(0); } 22% { transform: scaleX(1); } 75% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
 @keyframes sub-in { 0%, 14% { opacity: 0; } 26% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 
-/* FIFTY / HUNDRED: earned. The number counts up over the name, a gold rule underlines it. */
 .moment.milestone .word { color: var(--milestone); animation: milestone-word 1300ms var(--ease) forwards; }
 .moment.milestone .rule {
   position: absolute; left: 50%; top: 50%;
@@ -403,7 +375,6 @@
 @keyframes rule { 0%, 20% { transform: translateX(-50%) scaleX(0); } 40% { transform: translateX(-50%) scaleX(1); } 77% { opacity: 1; } 100% { transform: translateX(-50%) scaleX(1); opacity: 0; } }
 @keyframes milestone-sub { 0% { opacity: 0; } 25% { opacity: 1; } 77% { opacity: 1; } 100% { opacity: 0; } }
 
-/* END OF OVER: a lower third, not a headline. Rises 8px out of the strip. */
 .moment.over-end { place-items: end start; padding: 0 0 calc(var(--strip-h) + 6px) 9px; }
 .moment.over-end .panel {
   display: flex; align-items: center; gap: 14px;
@@ -417,8 +388,6 @@
 .moment.over-end .balls { display: flex; gap: 4px; }
 @keyframes over-panel { 0% { opacity: 0; transform: translateY(8px); } 11% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 
-/* ---------------------------------------------------------------- reduced motion */
-
 @media (prefers-reduced-motion: reduce) {
   .strip, .call, .scrim, .rates .crr, .rates .gap, .rates .rrr, .balls .ball, .action button { transition: none; }
   .balls .ball.new, .action button.is-waiting { animation: none; }
@@ -430,8 +399,6 @@
   .moment .band { transform: translateY(-50%) !important; }
   @keyframes rm-fade { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
 }
-
-/* ---------------------------------------------------------------- their innings, watched */
 
 .scrim.watch { place-items: start center; padding-top: clamp(24px, 8vh, 80px); }
 .innings {
@@ -490,9 +457,6 @@
 .innings button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 @media (max-width: 720px) { .innings .body { grid-template-columns: 1fr; } .innings .col + .col { border-left: 0; border-top: 1px solid var(--line); } }
 
-
-/* ---------------------------------------------------------------- the end of the season */
-
 .scrim.fate { background: rgba(2, 4, 10, 0.72); }
 .fate-card {
   width: min(640px, 92vw);
@@ -537,8 +501,6 @@
 @media (prefers-reduced-motion: reduce) {
   .fate-card, .fate-card .trophy { animation: none; }
 }
-
-/* ---------------------------------------------------------------- the screens: team sheet and season */
 
 .screen {
   position: absolute; inset: 0;
@@ -600,7 +562,6 @@
 .screen .actions .danger:hover { background: rgba(255, 30, 74, 0.18); }
 .screen .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: clamp(12px, 2vh, 20px); }
 
-/* Franchise cards: a broadcast team bug each. */
 .franchises {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -657,7 +618,6 @@
 .panel .label.gold { color: var(--milestone); }
 .note { color: var(--fg-mute); margin: 8px 0; line-height: 1.5; }
 
-/* Ratings as bars. Colour by band, and the number in the title for anyone who wants it. */
 .ratings .row { display: grid; grid-template-columns: minmax(0, 1fr) 72px repeat(var(--cols, 3), 56px); gap: 8px; align-items: center; padding: 3px 0; }
 .ratings.cols-3 { --cols: 3; }
 .ratings.cols-4 { --cols: 4; }
@@ -670,7 +630,6 @@
 .ratings .bar.good::after { background: var(--four); }
 .ratings .bar.fair::after { background: var(--six); }
 
-/* The season. */
 .season-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr); grid-template-rows: auto auto; gap: clamp(10px, 1.4vw, 18px); align-items: start; }
 .panel.table { grid-row: 1 / 3; }
 .standings .row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 36px 36px 36px 36px 48px 72px; gap: 6px; align-items: center; padding: 6px 8px; border-left: 3px solid transparent; }

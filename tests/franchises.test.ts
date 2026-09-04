@@ -6,18 +6,6 @@ import { simulateMatch } from "../src/sim/match";
 import type { MatchResult } from "../src/sim/match";
 import { OVERS, BALLS_PER_OVER } from "../src/sim/innings";
 
-/**
- * The real squads, held to the same standard as the generated ones.
- *
- * The calibration bands were fitted against a generated league. Authored
- * numbers can drift out of those ranges one plausible-looking player at a
- * time -- a top order all in the 80s reads fine on the page and makes 220 a
- * par score -- so the franchises play their own seasons here and have to land
- * in the same place. And a tournament is only worth playing if every side can
- * win and no side always does, which no season average can tell you; that is
- * the balance check.
- */
-
 const SEEDS = ["franchise-2026", "franchise-monsoon", "franchise-lights"];
 const measure = process.env.MEASURE === "1";
 
@@ -117,9 +105,6 @@ describe("a season between the franchises", () => {
       .sort((a, b) => b.share - a.share);
     if (measure) console.log("win shares:", shares.map((s) => `${s.id} ${(s.share * 100).toFixed(0)}%`).join("  "));
 
-    // Measured 0.33-0.67 over these three seasons (27 games a side, so a
-    // standard error near 0.10). A side under a sixth is a bye; a side over
-    // three quarters is a foregone conclusion.
     expect(shares[shares.length - 1].share).toBeGreaterThan(0.15);
     expect(shares[0].share).toBeLessThan(0.8);
   });

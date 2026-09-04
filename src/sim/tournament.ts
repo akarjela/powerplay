@@ -3,35 +3,17 @@ import type { Squad } from "./player";
 import { simulateMatch, netRunRateInnings, resultOf } from "./match";
 import type { InningsSummary } from "./innings";
 
-/**
- * A season: single round robin, then the IPL bracket.
- *
- * Pure and serialisable. A `Season` is plain data that names squads by id and
- * carries every result, so it can sit in localStorage and be rebuilt into a
- * table at any time; the functions here take one and return a new one. The
- * scene plays your fixtures with a bat and asks `simulateFixture` for the
- * rest, and neither path knows which it is once the result is recorded.
- *
- * The bracket is the IPL's: first plays second in Qualifier 1 and the winner
- * goes straight to the Final; third plays fourth in the Eliminator, whose
- * winner meets the loser of Qualifier 1 in Qualifier 2 for the other place.
- * Ties in the league are a point each. A tie in a playoff sends through the
- * side that finished higher in the league, which is the rule for a washout
- * and stands in for the super over the model does not have.
- */
-
 export type Stage = "league" | "qualifier1" | "eliminator" | "qualifier2" | "final";
 
 export interface Fixture {
   id: string;
   stage: Stage;
-  /** 1-based league round; 0 for playoffs. */
+
   round: number;
   home: string;
   away: string;
 }
 
-/** One innings, as much of it as a table needs. */
 export interface InningsLine {
   squad: string;
   runs: number;
@@ -43,20 +25,20 @@ export interface Played {
   fixtureId: string;
   first: InningsLine;
   second: InningsLine;
-  /** Null on a tie. */
+
   winner: string | null;
   summary: string;
 }
 
 export interface Season {
   seed: string;
-  /** Squad ids, in the order the season was created with. */
+
   squads: string[];
-  /** The squad the human bats for. */
+
   you: string;
   league: Fixture[];
   results: Played[];
-  /** The fate popup already shown, so it is shown once. Optional: older saves lack it. */
+
   told?: Fate["kind"];
 }
 
@@ -76,12 +58,6 @@ export interface Standing {
 
 export const POINTS = { win: 2, tie: 1, loss: 0 } as const;
 
-/**
- * The circle method: fix one side, rotate the rest. Ten sides give nine
- * rounds of five matches in which nobody plays twice, which is what lets a
- * round resolve as a unit. Home goes to whichever of the pair has had fewer
- * home games so far, which keeps everyone between four and five.
- */
 export function createSeason(squadIds: string[], you: string, seed: string): Season {
   if (squadIds.length % 2 !== 0) throw new Error("a round robin needs an even number of sides");
   if (!squadIds.includes(you)) throw new Error(`"${you}" is not in the season`);
@@ -116,7 +92,6 @@ export function recordResult(season: Season, played: Played): Season {
 
 export const resultFor = (season: Season, fixtureId: string) => season.results.find((r) => r.fixtureId === fixtureId);
 
-/** The league table: points, then net run rate, then wins. */
 export function standings(season: Season): Standing[] {
   const rows = new Map<string, Standing>(season.squads.map((squad) => [squad, {
     squad, played: 0, won: 0, lost: 0, tied: 0, points: 0,
@@ -158,11 +133,6 @@ export function standings(season: Season): Standing[] {
 
 export const leagueComplete = (season: Season) => season.league.every((f) => resultFor(season, f.id));
 
-/**
- * The playoff fixtures that exist right now, given what has been played.
- * Qualifier 1 and the Eliminator appear together once the league is done;
- * Qualifier 2 once both have results; the Final once Qualifier 2 has one.
- */
 export function playoffs(season: Season): Fixture[] {
   if (!leagueComplete(season)) return [];
   const table = standings(season);
@@ -189,17 +159,14 @@ export function playoffs(season: Season): Fixture[] {
   return fixtures;
 }
 
-/** A playoff has a winner even when the match is tied: the higher-placed side. */
 export function playoffWinner(season: Season, fixture: Fixture, played: Played): string {
   if (played.winner) return played.winner;
   const order = standings(season).map((s) => s.squad);
   return order.indexOf(fixture.home) < order.indexOf(fixture.away) ? fixture.home : fixture.away;
 }
 
-/** Every fixture that exists, league and current playoffs. */
 export const allFixtures = (season: Season): Fixture[] => [...season.league, ...playoffs(season)];
 
-/** The next fixture without a result, in playing order. Null when the season is over. */
 export function nextFixture(season: Season): Fixture | null {
   return allFixtures(season).find((f) => !resultFor(season, f.id)) ?? null;
 }
@@ -219,11 +186,9 @@ export function champion(season: Season): string | null {
 
 export const isOver = (season: Season) => champion(season) !== null;
 
-/** Does this fixture involve the human's side? */
 export const involvesYou = (season: Season, fixture: Fixture) =>
   fixture.home === season.you || fixture.away === season.you;
 
-/** Resolve a fixture headlessly, with the model on both sides. */
 export function simulateFixture(
   fixture: Fixture,
   squadById: (id: string) => Squad,
@@ -239,7 +204,6 @@ export function simulateFixture(
   };
 }
 
-/** Build a result from two innings summaries -- yours with a bat, theirs from the model, in either order. */
 export function playedFrom(fixture: Fixture, first: InningsSummary, second: InningsSummary): Played {
   const result = resultOf(first, second);
   return {
@@ -255,10 +219,6 @@ const lineOf = (innings: InningsSummary): InningsLine => ({
   squad: innings.squad.id, runs: innings.runs, wickets: innings.wickets, balls: innings.balls,
 });
 
-/**
- * How your season stands, for the popup: champions, runners-up, knocked out
- * in a playoff, or out at the league stage. Null while you are still in it.
- */
 export type Fate =
   | { kind: "champion" }
   | { kind: "runner-up" }

@@ -10,12 +10,6 @@ import type { BallState, Fielder } from "../src/game/physics/field";
 import { countsAsBall, runsAgainstBowler } from "../src/sim/types";
 import type { Phase } from "../src/sim/delivery";
 
-/**
- * Outcome resolution is pure, so it is testable without a browser or a canvas.
- * The Phaser half -- swing feel -- is not, and is verified by playing. Keeping
- * the boundary between the two exactly here is the point of the architecture.
- */
-
 const atMetres = (metres: number) => BATTER_X + metres * PX_PER_METRE;
 const field = fieldFor("middle");
 const named = (name: string): Fielder => {
@@ -37,7 +31,7 @@ describe("the field settings", () => {
     expect(outside("powerplay")).toBeLessThanOrEqual(2);
     expect(outside("middle")).toBeLessThanOrEqual(5);
     expect(outside("death")).toBeLessThanOrEqual(5);
-    // And the later fields actually use the allowance, or the phase means nothing.
+
     expect(outside("middle")).toBeGreaterThanOrEqual(4);
   });
 
@@ -56,7 +50,6 @@ describe("scoring a struck ball", () => {
   });
 
   it("gives four for reaching the rope along the ground through a gap", () => {
-    // Straight past the bowler, between long-on and long-off.
     const outcome = resolveGroundedBall(70, 0, false, 0, field);
     expect(outcome.runs).toBe(4);
     expect(outcome.wicket).toBeUndefined();
@@ -66,7 +59,7 @@ describe("scoring a struck ball", () => {
     expect(resolveGroundedBall(4, 0, false, 0, nobody).runs).toBe(0);
     expect(resolveGroundedBall(15, 0, false, 0, nobody).runs).toBe(1);
     expect(resolveGroundedBall(32, 0, false, 0, nobody).runs).toBe(2);
-    // Threes were 5% of shots against about 1% in real T20; 48m is two.
+
     expect(resolveGroundedBall(48, 0, false, 0, nobody).runs).toBe(2);
     expect(resolveGroundedBall(58, 0, false, 0, nobody).runs).toBe(3);
   });
@@ -92,8 +85,6 @@ describe("scoring a struck ball", () => {
   });
 
   it("is not fielded by a man the ball was lofted over", () => {
-    // Over mid-off, landing at 40m and running on: the gap to long-off is the
-    // off-side rope; a ball that lands 40m out and rolls to 68 in the gap is four.
     const midOff = named("mid-off");
     const pastHim = resolveGroundedBall(50, midOff.bearing - 12, false, 40, field);
     expect(pastHim.description).not.toContain("mid-off");
@@ -108,14 +99,12 @@ describe("cutting a ball off", () => {
 
   it("gives a deep fielder more ground to cover the further the ball travels", () => {
     const deepCover = named("deep cover");
-    // 12 degrees off his line at 60m is ~12m across: reachable for a ball hit
-    // along the ground from the bat, not for one that landed 10m in front of him.
+
     expect(interceptedBy(0, 68, deepCover.bearing + 12, field)?.name).toBe("deep cover");
     expect(interceptedBy(50, 68, deepCover.bearing + 12, field)).toBeNull();
   });
 
   it("finds nobody in a genuine gap", () => {
-    // Between deep cover (-58) and point (-84) at 24m, past the ring.
     expect(interceptedBy(30, 45, -72, field)).toBeNull();
   });
 });
@@ -129,8 +118,6 @@ describe("catching", () => {
   });
 
   it("does not catch a ball that has bounced since the shot", () => {
-    // The definition of a catch, and it was missing: 66% of every shot in the
-    // game was a catch because a ball rolling past a fielder counted.
     const midOn = named("mid-wicket");
     expect(catchableBy(midOn.distance, midOn.bearing, head, false, 0, field)).toBeNull();
   });
@@ -146,8 +133,6 @@ describe("catching", () => {
   });
 
   it("does not catch at the same distance on the wrong side of the ground", () => {
-    // This is the whole point of the second axis. Long-on's distance, but
-    // hit toward deep cover: nobody there.
     const longOn = named("long-on");
     expect(catchableBy(longOn.distance, -40, head, true, 0, field)).toBeNull();
   });
@@ -173,9 +158,7 @@ describe("rolling", () => {
     expect(predictRest(20, 0)).toBe(20);
     expect(predictRest(20, 2)).toBeGreaterThan(20);
     expect(predictRest(20, 4)).toBeGreaterThan(predictRest(20, 2));
-    // 20 m/s along the ground: Matter's air drag plus ROLL_DECEL. Measured at
-    // about 25m; the band is there to catch a unit slip, which is how the
-    // first version predicted 88m and sent every firm push to the rope.
+
     const twentyMps = 20 * (PX_PER_METRE / 60);
     expect(predictRest(0, twentyMps)).toBeGreaterThan(15);
     expect(predictRest(0, twentyMps)).toBeLessThan(45);
@@ -214,7 +197,6 @@ describe("the judge", () => {
   });
 
   it("judges a struck ball the moment it is rolling, from where it will stop", () => {
-    // Rolling at 30m into the straight gap: it will run on, and two is right.
     const rolling = judgeBall(live({
       struck: true, bouncedAfterStrike: true, x: atMetres(30), y: GROUND_Y - 6, vx: 1.2, vy: 0, landingM: 3,
     }));
@@ -231,7 +213,6 @@ describe("the judge", () => {
   });
 
   it("treats a ball hit backward as one behind square", () => {
-    // Deflected behind off the bat, bearing said mid-on: it went to fine leg.
     const behind = judgeBall(live({
       struck: true, bouncedAfterStrike: true, x: BATTER_X - 30 * PX_PER_METRE, y: GROUND_Y - 6,
       vx: -1, vy: 0, bearing: 20, landingM: 5,

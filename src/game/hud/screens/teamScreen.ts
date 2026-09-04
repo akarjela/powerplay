@@ -2,19 +2,8 @@ import { FRANCHISES } from "../../../data/franchises";
 import type { Franchise } from "../../../data/franchises";
 import type { Batter, Bowler } from "../../../sim/player";
 import { nextFixture, standings } from "../../../sim/tournament";
-import type { Season } from "../../../sim/tournament";
-import { el, hex, hudRoot } from "../dom";
-
-/**
- * The team sheet: pick your side, and theirs -- or your side, and a season.
- *
- * Two modes. Quick match: the first click is the side you bat for, the
- * second the side you face, and both elevens are laid out below with their
- * ratings as bars, because the attributes are the whole point of the
- * squads. Season: one click picks the franchise you carry through a round
- * robin and the playoffs; if a season is already saved, it can be continued
- * instead. DOM, on the design system; the scene behind it only paints.
- */
+import type { Fixture, Season } from "../../../sim/tournament";
+import { el, hex, hudRoot, ordinal } from "../dom";
 
 export type Mode = "quick" | "season";
 
@@ -25,8 +14,6 @@ export interface TeamScreenHandlers {
   onContinueSeason: () => void;
   onAbandonSeason: () => void;
 }
-
-const ORDINAL = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 
 export class TeamScreen {
   private readonly root: HTMLElement;
@@ -135,7 +122,8 @@ export class TeamScreen {
       const them = this.bowling?.id === f.id;
       card.classList.toggle("is-you", you);
       card.classList.toggle("is-them", them);
-      tag.textContent = you ? (this.mode === "season" ? "Your side" : "You bat") : them ? "You face" : "";
+      if (you) tag.textContent = this.mode === "season" ? "Your side" : "You bat";
+      else tag.textContent = them ? "You face" : "";
     }
 
     this.panels.replaceChildren();
@@ -156,35 +144,40 @@ export class TeamScreen {
 
   private seasonPanels(): void {
     const saved = this.handlers.savedSeason();
-    if (saved) {
-      const you = FRANCHISES.find((f) => f.id === saved.you)!;
-      const table = standings(saved);
-      const place = table.findIndex((s) => s.squad === saved.you) + 1;
-      const next = nextFixture(saved);
-      const panel = el("section", "panel saved");
-      panel.style.setProperty("--flag-primary", hex(you.colours.primary));
-      panel.style.setProperty("--flag-secondary", hex(you.colours.secondary));
-      panel.append(el("span", "label", "Season in progress"));
-      panel.append(el("div", "big", you.name));
-      panel.append(el("div", "line", `${ORDINAL(place)} after ${table[place - 1].played} games. ${next ? (next.stage === "league" ? `Next: round ${next.round}.` : `Next: ${next.stage === "qualifier1" ? "Qualifier 1" : next.stage === "qualifier2" ? "Qualifier 2" : next.stage === "eliminator" ? "the Eliminator" : "the Final"}.`) : "Season complete."}`));
-      const row = el("div", "actions");
-      const go = el("button", "primary", "Continue");
-      go.type = "button";
-      go.addEventListener("click", () => this.handlers.onContinueSeason());
-      const drop = el("button", "danger", "Abandon");
-      drop.type = "button";
-      drop.addEventListener("click", () => {
-        this.handlers.onAbandonSeason();
-        this.refresh();
-      });
-      row.append(go, drop);
-      panel.append(row);
-      if (this.batting) panel.append(el("div", "line warn", `Starting a new season as ${this.batting.name} replaces this one.`));
-      this.panels.append(panel);
-    } else if (!this.batting) {
-      this.panels.append(note("Nine league games, then the playoffs if you make the top four. Pick a side."));
-    }
+    if (saved) this.panels.append(this.savedPanel(saved));
+    else if (!this.batting) this.panels.append(note("Nine league games, then the playoffs if you make the top four. Pick a side."));
     if (this.batting) this.panels.append(squadPanel(this.batting, "Your squad", true));
+  }
+
+  private savedPanel(saved: Season): HTMLElement {
+    const you = FRANCHISES.find((f) => f.id === saved.you)!;
+    const table = standings(saved);
+    const place = table.findIndex((s) => s.squad === saved.you) + 1;
+
+    const panel = el("section", "panel saved");
+    panel.style.setProperty("--flag-primary", hex(you.colours.primary));
+    panel.style.setProperty("--flag-secondary", hex(you.colours.secondary));
+    panel.append(
+      el("span", "label", "Season in progress"),
+      el("div", "big", you.name),
+      el("div", "line", `${ordinal(place)} after ${table[place - 1].played} games. ${whatIsNext(nextFixture(saved))}`),
+    );
+
+    const go = el("button", "primary", "Continue");
+    go.type = "button";
+    go.addEventListener("click", () => this.handlers.onContinueSeason());
+    const drop = el("button", "danger", "Abandon");
+    drop.type = "button";
+    drop.addEventListener("click", () => {
+      this.handlers.onAbandonSeason();
+      this.refresh();
+    });
+    const row = el("div", "actions");
+    row.append(go, drop);
+    panel.append(row);
+
+    if (this.batting) panel.append(el("div", "line warn", `Starting a new season as ${this.batting.name} replaces this one.`));
+    return panel;
   }
 
   destroy(): void {
@@ -196,11 +189,30 @@ function note(text: string): HTMLElement {
   return el("p", "note", text);
 }
 
-/**
- * An eleven with rating bars. For the side you bat for that is the batting
- * attributes; for the side you face it is the six bowlers first, with the
- * ball's attributes, because that is what you are about to meet.
- */
+function whatIsNext(next: Fixture | null): string {
+  if (!next) return "Season complete.";
+  switch (next.stage) {
+    case "league": return `Next: round ${next.round}.`;
+    case "qualifier1": return "Next: Qualifier 1.";
+    case "qualifier2": return "Next: Qualifier 2.";
+    case "eliminator": return "Next: the Eliminator.";
+    case "final": return "Next: the Final.";
+  }
+}
+
+function band(v: number): string {
+  if (v >= 75) return "elite";
+  if (v >= 55) return "good";
+  if (v >= 40) return "fair";
+  return "weak";
+}
+
+function bowlerRole(pace: number): string {
+  if (pace < 35) return "spin";
+  if (pace > 70) return "fast";
+  return "seam";
+}
+
 function squadPanel(f: Franchise, title: string, batting: boolean): HTMLElement {
   const panel = el("section", "panel squad");
   panel.style.setProperty("--flag-primary", hex(f.colours.primary));
@@ -224,7 +236,7 @@ function squadPanel(f: Franchise, title: string, batting: boolean): HTMLElement 
     : [
       ...f.squad.bowlers.map((w: Bowler) => ({
         name: w.name, values: [w.pace, w.accuracy, w.movement, w.variation],
-        role: w.pace < 35 ? "spin" : w.pace > 70 ? "fast" : "seam",
+        role: bowlerRole(w.pace),
       })),
       ...f.squad.batters.filter((b) => !f.squad.bowlers.some((w) => w.id === b.id)).map((b) => ({
         name: b.name, values: [], role: "bat",
@@ -238,7 +250,7 @@ function squadPanel(f: Franchise, title: string, batting: boolean): HTMLElement 
       const v = r.values[i];
       const cell = el("span", "col");
       if (v !== undefined) {
-        const bar = el("span", `bar ${v >= 75 ? "elite" : v >= 55 ? "good" : v >= 40 ? "fair" : "weak"}`);
+        const bar = el("span", `bar ${band(v)}`);
         bar.style.setProperty("--v", `${v}%`);
         bar.title = String(v);
         cell.append(bar);

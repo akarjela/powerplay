@@ -1,14 +1,5 @@
 import type { BallMark } from "../humanInnings";
-import { el, hudRoot } from "./dom";
-
-/**
- * Full-screen typographic moments: FOUR, SIX, WICKET, a fifty or a hundred,
- * and the end of an over. Not toasts. Each has its own timing and personality
- * in hud.css; this only builds the markup and removes it when the animation
- * ends. Spec: design-system/cricketgame/pages/moments.md.
- *
- * Never two at once: a new moment replaces whatever is up.
- */
+import { ballChip, el, hudRoot } from "./dom";
 
 export type Moment =
   | { kind: "four" }
@@ -51,10 +42,7 @@ export function showMoment(m: Moment): void {
     case "over": {
       const panel = el("div", "panel");
       const balls = el("div", "balls");
-      for (const b of m.balls) {
-        const kind = b.kind === "boundary" && b.label === "6" ? "six" : b.kind;
-        balls.append(el("span", `ball ${kind}`, b.label));
-      }
+      for (const b of m.balls) balls.append(ballChip(b));
       panel.append(el("span", "head", `End of over ${m.number}`), balls, el("span", "runs", `${m.runs} run${m.runs === 1 ? "" : "s"}`));
       node.append(panel);
       break;

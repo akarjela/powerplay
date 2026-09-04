@@ -3,15 +3,6 @@ import type { Squad } from "./player";
 import { simulateInnings, OVERS, BALLS_PER_OVER, WICKETS, oversOf } from "./innings";
 import type { InningsResult, InningsSummary } from "./innings";
 
-/**
- * A whole match: toss, two innings, a result.
- *
- * Everything here is headless and instant, which is the second reason the sim
- * was kept pure. In a tournament round you play one fixture with a bat in your
- * hand and the other four resolve in the same tick, so a league table exists
- * the moment your match ends.
- */
-
 export interface MatchResult {
   home: Squad;
   away: Squad;
@@ -19,16 +10,16 @@ export interface MatchResult {
   tossDecision: "bat" | "field";
   first: InningsResult;
   second: InningsResult;
-  /** Null on a tie. Ties stand; there is no super over yet. */
+
   winner: Squad | null;
-  /** "won by 4 wickets (7 balls remaining)". Empty on a tie. */
+
   margin: string;
   summary: string;
 }
 
 export function simulateMatch(home: Squad, away: Squad, rng: Rng): MatchResult {
   const tossWinner = rng.chance(0.5) ? home : away;
-  // Chasing is the near-universal T20 choice: you know what you need.
+
   const tossDecision = rng.chance(0.75) ? "field" : "bat";
 
   const battingFirst =
@@ -41,10 +32,6 @@ export function simulateMatch(home: Squad, away: Squad, rng: Rng): MatchResult {
   return { home, away, tossWinner, tossDecision, first, second, ...resultOf(first, second) };
 }
 
-/**
- * Who won, by how much, in words. Takes summaries, so an innings you batted
- * yourself and one the model rolled are judged by the same sentence.
- */
 export function resultOf(first: InningsSummary, second: InningsSummary): {
   winner: Squad | null; margin: string; summary: string;
 } {
@@ -75,13 +62,6 @@ export function resultOf(first: InningsSummary, second: InningsSummary): {
   };
 }
 
-/**
- * Run rate for net-run-rate purposes.
- *
- * The one rule people get wrong: a side bowled out is charged the *full* twenty
- * overs, not the overs it actually lasted. Being dismissed for 90 in 14 overs is
- * a disaster for your NRR, and it should be. M4's points table depends on this.
- */
 export function netRunRateInnings(innings: Pick<InningsSummary, "runs" | "wickets" | "balls">): { runs: number; overs: number } {
   const allOut = innings.wickets >= WICKETS;
   return {
@@ -90,7 +70,6 @@ export function netRunRateInnings(innings: Pick<InningsSummary, "runs" | "wicket
   };
 }
 
-/** A one-line scoreline, e.g. "182/6 (20.0)". */
 export function scoreline(innings: Pick<InningsSummary, "runs" | "wickets" | "balls">): string {
   const wickets = innings.wickets >= WICKETS ? `${innings.runs}` : `${innings.runs}/${innings.wickets}`;
   return `${wickets}${innings.wickets >= WICKETS ? " all out" : ""} (${oversOf(innings.balls)})`;

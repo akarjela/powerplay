@@ -30,7 +30,6 @@ describe("the human innings", () => {
   });
 
   it("refuses to go past the end, which is the bug it exists to prevent", () => {
-    // The scene used to accept an eleventh wicket, and a forty-eighth.
     const innings = feed(new HumanInnings(), out, WICKETS + 40);
     expect(innings.wickets).toBe(WICKETS);
     expect(innings.balls).toBe(WICKETS);
@@ -85,7 +84,7 @@ describe("the human innings with a batting order and a target", () => {
     innings.record(one);
     expect(innings.atTheCrease[0].batter.name).toBe("Devansh Pillai");
     innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot);
-    // Six legal balls: the ends change, so the man who took the single is back on strike.
+
     expect(innings.atTheCrease[0].batter.name).toBe("Arjun Malhotra");
   });
 
@@ -137,7 +136,7 @@ describe("the over on the strip", () => {
     innings.record({ runs: 1, description: "one" });
     expect(innings.thisOverRuns).toBe(6);
     for (let i = 0; i < 4; i++) innings.record({ runs: 0, description: "dot" });
-    // Six legal balls: the over is done but still showing.
+
     expect(innings.thisOver.length).toBe(7);
     expect(innings.thisOverNumber).toBe(1);
     expect(innings.thisOverRuns).toBe(6);

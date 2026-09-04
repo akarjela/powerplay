@@ -6,20 +6,12 @@ import {
 } from "../src/game/physics/direction";
 import type { Contact } from "../src/game/physics/direction";
 
-/**
- * The direction model, as arithmetic. Its one physical claim -- that meeting
- * the ball early sends it to leg and late to off -- is checked against the
- * real engine in physics.test.ts; here it is checked against itself.
- */
-
 const contact = (over: Partial<Contact>): Contact => ({
   aheadPx: 13, length: "good", line: "stumps", spray: 0, ...over,
 });
 
 describe("where a shot goes", () => {
   it("goes straight from the neutral contact for each length, on a stumps line", () => {
-    // Neutral contacts were measured as the median of a harness sweep; a
-    // stumps line carries a small leg bias, so "straight" means within it.
     for (const [length, ahead] of [["yorker", 18], ["full", 9], ["good", 13], ["short", 14]] as const) {
       expect(Math.abs(shotBearing(contact({ length, aheadPx: ahead })))).toBeLessThan(10);
     }
@@ -84,11 +76,10 @@ describe("the plan", () => {
   });
 
   it("measures the miss from a ball's path", () => {
-    // A fielder 5m to the leg of a straight drive, 30m out.
     const { offLine, alongLine } = relativeToPath({ along: 30, across: 5 }, 0);
     expect(offLine).toBeCloseTo(5);
     expect(alongLine).toBeCloseTo(30);
-    // The same fielder, seen from a drive aimed straight at him.
+
     const dead = relativeToPath({ along: 30, across: 5 }, (Math.atan2(5, 30) * 180) / Math.PI);
     expect(dead.offLine).toBeCloseTo(0);
   });
