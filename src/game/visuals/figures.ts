@@ -304,6 +304,53 @@ export function drawFielder(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.G
   return c;
 }
 
+/**
+ * The wicketkeeper: crouched behind the stumps, gloves together, facing the
+ * bowler like the batter does but seen from the other side of the pitch.
+ * Origin at the feet. In the bowling side's kit, capped.
+ */
+export function drawKeeper(scene: Phaser.Scene, kit: Kit, look: Look): Phaser.GameObjects.Container {
+  const c = scene.add.container(0, 0);
+  const g = scene.add.graphics();
+  const shade = darken(kit.primary, 0.35);
+  const trousers = darken(kit.primary, 0.5);
+  const b = look.build;
+
+  softShadow(g, 0, 1, 46, 9);
+
+  // Legs bent double: thighs out, shins down, boots wide.
+  g.fillStyle(trousers).fillRoundedRect(-16 * b, -22, 10 * b, 22, 3).fillRoundedRect(6 * b, -22, 10 * b, 22, 3);
+  g.fillStyle(darken(trousers, 0.3), 0.6).fillRoundedRect(-16 * b, -22, 4 * b, 22, 2).fillRoundedRect(6 * b, -22, 4 * b, 22, 2);
+  g.fillStyle(trousers).fillEllipse(-8 * b, -30, 18 * b, 12).fillEllipse(8 * b, -30, 18 * b, 12);
+  // Pads, thinner than the batter's.
+  g.fillStyle(PAD).fillRoundedRect(-15 * b, -20, 8 * b, 18, 3).fillRoundedRect(7 * b, -20, 8 * b, 18, 3);
+  g.fillStyle(SOLE).fillRoundedRect(-18 * b, -1.5, 12 * b, 2, 1).fillRoundedRect(6 * b, -1.5, 12 * b, 2, 1);
+  g.fillStyle(BOOT).fillRoundedRect(-18 * b, -5, 12 * b, 4, 1.5).fillRoundedRect(6 * b, -5, 12 * b, 4, 1.5);
+
+  // Torso leaning forward over the knees.
+  g.fillStyle(kit.primary).fillRoundedRect(-13 * b, -58, 26 * b, 26, 6);
+  g.fillStyle(shade, 0.85).fillRoundedRect(-13 * b, -58, 7 * b, 26, { tl: 6, bl: 6, tr: 0, br: 0 });
+  g.fillStyle(kit.secondary, 0.95).fillRect(-13 * b, -44, 26 * b, 2.5);
+  g.fillStyle(0xffffff, 0.8).fillRoundedRect(-5 * b, -54, 10 * b, 6, 1.5);
+
+  // Arms down between the knees to the gloves, big and pale, fingers up.
+  g.lineStyle(5, kit.primary);
+  g.lineBetween(-10 * b, -52, -6 * b, -30);
+  g.lineBetween(10 * b, -52, 6 * b, -30);
+  g.fillStyle(0xf1f5f9).fillRoundedRect(-9, -34, 8, 11, 3).fillRoundedRect(1, -34, 8, 11, 3);
+  g.fillStyle(0xe2e8f0).fillRect(-8, -38, 2, 5).fillRect(-5, -39, 2, 6).fillRect(-2, -38, 2, 5);
+  g.fillStyle(0xe2e8f0).fillRect(2, -38, 2, 5).fillRect(5, -39, 2, 6).fillRect(8, -38, 2, 5);
+  g.fillStyle(kit.secondary, 0.85).fillRect(-9, -25, 18, 2);
+
+  // Head low, cap on.
+  g.fillStyle(darken(look.skin, 0.15)).fillRect(-3, -64, 6, 7);
+  drawFaceFront(g, 0, -67, 8.2, look);
+  drawCap(g, 0, -67, 8.2, kit);
+
+  c.add(g);
+  return c;
+}
+
 /** Stumps at a point along the pitch, projected: three of them with bails, grooved. */
 export function drawStumps(
   scene: Phaser.Scene,

@@ -26,6 +26,8 @@ export class Radar {
   private readonly cx = 0;
   private readonly cy = 0;
   private readonly k: number;
+  /** -1 for a left-hander: leg side on the right, as the ground is. */
+  private mirror = 1;
   readonly root: Phaser.GameObjects.Container;
   private readonly ground: Phaser.GameObjects.Graphics;
   private readonly men: Phaser.GameObjects.Graphics;
@@ -49,6 +51,13 @@ export class Radar {
     this.root.setPosition(cx, cy);
   }
 
+  /** Which way the leg side is. Redraws the men. */
+  setMirror(mirror: 1 | -1, field: Fielder[]): void {
+    if (mirror === this.mirror) return;
+    this.mirror = mirror;
+    this.setField(field);
+  }
+
   private drawGround(radiusPx: number): void {
     const g = this.ground;
     g.fillStyle(0x08111f, 0.85).fillCircle(this.cx, this.cy, radiusPx + 6);
@@ -65,7 +74,7 @@ export class Radar {
   /** The point on the radar for a plan position. Leg side is left, bowler is up. */
   private at(distanceM: number, bearing: Bearing): { x: number; y: number } {
     const { along, across } = planPosition(distanceM, bearing);
-    return { x: this.cx - across * this.k, y: this.cy - along * this.k };
+    return { x: this.cx - across * this.mirror * this.k, y: this.cy - along * this.k };
   }
 
   setField(field: Fielder[]): void {

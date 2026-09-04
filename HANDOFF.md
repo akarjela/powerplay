@@ -82,6 +82,12 @@ Read this first; everything below is the detail behind it.
   runner-up, or knocked out and where. A trophy card if you won, a card for
   the other endings, once, remembered on the save (`Season.told`). Your own
   fixture can be simulated instead of played.
+- **Fielders who move, a keeper, left-handers.** The nearest man runs at a
+  struck ball -- at it in the air, at where it will stop once it rolls --
+  and walks back; the ball rolls on after the call instead of vanishing. A
+  keeper crouches behind the stumps. A third of each order bats left (a
+  `*` on the name in franchises.ts): the ground mirrors across the pitch for
+  them, the bat sits on the near side, the strip tags them `L`.
 
 ### What is left
 
@@ -99,8 +105,9 @@ Ordered by how much a player would notice.
 2. **The physics path produces bowled, caught, lbw and run-out**; stumped
    does not exist there. Close enough that a season's stats will not show
    it unless you look.
-3. **Fielders do not move on screen**, and deep point and third man are
-   behind the camera. Left-handers do not exist. There is no keeper.
+3. **Deep point and third man are behind the camera**, on the radar only.
+   The fielders move but the judge does not watch them move: a ball is
+   decided from the set field, and the run is what you see him do about it.
 4. **The menu scenes are still Phaser text on a 1280x720 frame**, zoomed to
    fit. They work and they fill the window, but they are not on the design
    system; the strip, the cards and the innings replay are. Moving them to
@@ -113,9 +120,8 @@ Ordered by how much a player would notice.
 In order, with the reasoning in *Next steps* below:
 
 1. Decide what to do with the two-path gap (see *What is left*).
-2. Fielders who move to the ball; a keeper; left-handers.
-3. The team and season screens onto the design system, in the DOM.
-4. M5: sound, touch, deploy, season history.
+2. The team and season screens onto the design system, in the DOM.
+3. M5: sound, touch, deploy, season history.
 
 ## Goal
 
@@ -178,7 +184,7 @@ attack costs; see *What is left*.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 165 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
+| Tests | 167 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
 | Source | ~5,950 lines across 31 files in `src/` (plus ~430 of CSS); ~2,150 across 13 in `tests/` |
@@ -303,6 +309,8 @@ compromises live in one file, and now every Matter body too.
   `swing.ts`. Still the file that decides whether the game feels good
 - `src/game/physics/direction.ts` — pure. **The second axis.** Bearing from
   contact, the plan geometry, the side-on projection, and the region names
+- `src/game/physics/chase.ts` — pure. `nearestTo` and `stepToward`: the
+  fielders' running, in plan metres. Visual only; the judge never reads it
 - `src/game/physics/field.ts` — pure. Three nine-man fields by phase, catch
   and cut-off reach, rolling and the rest prediction, and `judgeBall` — the
   one function that decides what a ball was, called by scene and harness alike
@@ -805,8 +813,12 @@ Left-handers. A keeper.
 - **The direction model is fitted to the harness's timing distribution.**
   If playtesters report everything going to one side, re-measure
   `NEUTRAL_AHEAD` against how people actually time it.
-- **Fielders do not move on screen.** Deep point and third man are behind
+- **The fielders' running is cosmetic.** The judge decides from the set
+  field; a fielder seen arriving at a ball he did not "stop" is the two
+  disagreeing, and the judge is right. Deep point and third man are behind
   the camera and are on the radar only.
+- **A left-hander is a mirror of the drawing only.** The sim's lines are
+  batter-relative already; bowlers do not yet change their plan for one.
 - **The strip is DOM and the radar is canvas.** They sit in different
   layers. Fine until something needs to be drawn over the strip.
 - **The pointer is not tracked over the next-ball button.** Everything else
@@ -818,7 +830,8 @@ Left-handers. A keeper.
 - **A wide is only slightly visible as a wide.** 1.4m outside off, faint,
   through the bat, called at the keeper.
 - **A ball is judged the moment it is rolling**, from a predicted rest
-  point, and vanishes mid-roll as the call comes up.
+  point; it now rolls on for up to 1.3s after the call while the fielder
+  runs to it, then goes.
 - **Catch reach uses wall-clock time**; on a throttled tab it under-counts
   catches. The harness uses simulated time.
 - **A tied playoff goes to the higher-placed side.** No super over.
