@@ -8,12 +8,11 @@ import type { Stance } from "../config";
 import { Bat } from "../physics/bat";
 import { contactDamping } from "../physics/swing";
 import {
-  fieldFor, isRolling, judgeBall, metresDownfield, predictRest, rollingVelocity, runOut,
+  fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity, runOut,
 } from "../physics/field";
-import { CHASE_SPEED, RETURN_SPEED, nearestTo, stepToward } from "../physics/chase";
 import type { Fielder } from "../physics/field";
 import { planPosition, shotBearing, travelledBearing } from "../physics/direction";
-import type { Bearing, PlanPoint } from "../physics/direction";
+import type { Bearing } from "../physics/direction";
 import { Camera, MATCH_CAMERA, cameraForViewport, depthFor } from "../view/camera";
 import type { Viewport } from "../view/camera";
 import { BallSprite, drawBatsman, drawFielder, drawKeeper, drawStumps, lookFor, makeBat } from "../visuals/figures";
@@ -52,6 +51,8 @@ import type { Fixture, Season } from "../../sim/tournament";
  */
 const LINE_ACROSS: Record<Line, number> = { leg: 0.3, stumps: 0, off: -0.3, "wide-off": -0.8 };
 const WIDE_ACROSS = -1.4;
+/** Metres toward leg the striker stands from the stumps' line: leg-stump guard. */
+const GUARD_ACROSS = 0.45;
 
 /**
  * The rate a par first innings runs at: the calibrated ~165 over twenty. When
@@ -160,16 +161,8 @@ export class MatchScene extends Phaser.Scene {
   private currentOver = -1;
   private phase: Phase = "powerplay";
   private field: Fielder[] = fieldFor("powerplay");
-  /** Each fielder on the plan: where he is set, where he is now, and his figure. */
-  private fielders: { fielder: Fielder; gfx: Phaser.GameObjects.Container; home: PlanPoint; at: PlanPoint }[] = [];
+  private fielders: Phaser.GameObjects.Container[] = [];
   private keeper?: Phaser.GameObjects.Container;
-  /** Who is running at this ball, once someone is. */
-  private chaser?: Fielder;
-  /** Where the ball is on the plan this frame, while it is live or rolling on. */
-  private ballPlan?: PlanPoint;
-  /** The judge has spoken; the ball rolls on for the eye only. */
-  private judged = false;
-  private judgedAt = 0;
 
   constructor() {
     super("match");
@@ -199,9 +192,6 @@ export class MatchScene extends Phaser.Scene {
     this.field = fieldFor("powerplay");
     this.fielders = [];
     this.keeper = undefined;
-    this.chaser = undefined;
-    this.ballPlan = undefined;
-    this.judged = false;
     this.ball = undefined;
     this.awaitingResult = false;
     this.stance = "neutral";
@@ -318,8 +308,10 @@ export class MatchScene extends Phaser.Scene {
     for (const key of stale) if (!this.bakedKeys.includes(key)) this.textures.remove(key);
     for (const g of this.stumps) g.destroy();
     this.stumps = [
-      drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y),
-      drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y),
+      // The striker's stumps draw over him (he stands to leg of them) and
+      // under the bat, which is in front of everything at the crease.
+      drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, 1.5)),
+      drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, -0.5)),
     ];
     this.setField(this.field);
     this.placeKeeper();
@@ -581,7 +573,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.striker?.id === batter.id) return;
     this.striker = batter;
     this.batsman?.destroy();
-    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(0, 1));
+    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(GUARD_ACROSS, 1));
   }
 
   /** The keeper, a few metres behind the stumps, crouched. */
@@ -598,51 +590,18 @@ export class MatchScene extends Phaser.Scene {
 
   private setField(field: Fielder[]): void {
     this.field = field;
-    for (const f of this.fielders) f.gfx.destroy();
+    for (const gfx of this.fielders) gfx.destroy();
     this.fielders = [];
-    this.chaser = undefined;
     const squad = this.sides.them.squad.batters;
     field.forEach((fielder, i) => {
-      const home = planPosition(fielder.distance, fielder.bearing);
-      const gfx = drawFielder(this, this.sides.them.colours, lookFor(squad[i % squad.length].id));
-      const entry = { fielder, gfx, home, at: { ...home } };
-      this.fielders.push(entry);
-      this.placeFielder(entry);
+      const { along, across } = planPosition(fielder.distance, fielder.bearing);
+      const p = this.camera.ground(along, across);
+      if (!p || p.sx < -80 || p.sx > this.view.width + 80 || p.sy > this.view.height + 80) return;
+      const figure = drawFielder(this, this.sides.them.colours, lookFor(squad[i % squad.length].id))
+        .setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(across));
+      this.fielders.push(figure);
     });
     this.radar?.setField(field);
-  }
-
-  /** Project a fielder's plan position to the screen. Off-screen men are hidden, not culled. */
-  private placeFielder(f: { gfx: Phaser.GameObjects.Container; at: PlanPoint }): void {
-    const across = f.at.across;
-    const p = this.camera.ground(f.at.along, across);
-    const visible = Boolean(p && p.sx > -80 && p.sx < this.view.width + 80 && p.sy < this.view.height + 80);
-    f.gfx.setVisible(visible);
-    if (p && visible) f.gfx.setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(across));
-  }
-
-  /**
-   * Fielders move. While a struck ball is live the nearest man runs at it --
-   * at where it is in the air, at where it will stop once it is rolling --
-   * and everyone walks back to his spot afterwards. The judge decided the
-   * ball from where they were set; this is what you watch him do about it.
-   */
-  private moveFielders(dtMs: number): void {
-    const ball = this.ballPlan;
-    if (ball && this.struck) {
-      if (!this.chaser) this.chaser = nearestTo(ball, this.fielders) ?? undefined;
-    } else {
-      this.chaser = undefined;
-    }
-    for (const f of this.fielders) {
-      const target = f.fielder === this.chaser && ball ? ball : f.home;
-      const speed = f.fielder === this.chaser && ball ? CHASE_SPEED : RETURN_SPEED;
-      const next = stepToward(f.at, target, speed, dtMs);
-      if (next.along !== f.at.along || next.across !== f.at.across) {
-        f.at = next;
-        this.placeFielder(f);
-      }
-    }
   }
 
   private startOver(over: number): void {
@@ -664,12 +623,9 @@ export class MatchScene extends Phaser.Scene {
     this.justStruck = false;
     this.bouncedAfterStrike = false;
     this.awaitingResult = false;
-    this.judged = false;
     this.landingM = 0;
     this.bearing = 0;
     this.effort = 0;
-    this.chaser = undefined;
-    this.ballPlan = undefined;
 
     const over = Math.floor(this.innings.balls / BALLS_PER_OVER);
     if (over !== this.currentOver) this.startOver(over);
@@ -704,9 +660,8 @@ export class MatchScene extends Phaser.Scene {
 
   // -- the frame --------------------------------------------------------------
 
-  update(_time: number, delta: number): void {
+  update(): void {
     this.readStance();
-    this.moveFielders(delta);
 
     const pivot = this.bat.pivotPoint;
     const pivotP = this.camera.project(Camera.fromPhysics(pivot.x, pivot.y))!;
@@ -715,9 +670,13 @@ export class MatchScene extends Phaser.Scene {
       physicsX: pivot.x, physicsY: pivot.y, projected: pivotP,
     }));
 
+    // Leg-stump guard: the striker stands a little to the leg side of the
+    // stumps, so from a camera on the off side they show in front of his
+    // pads, as they do on television. The bat stays in the physics plane.
     const feet = this.camera.project(Camera.fromPhysics(
       pivot.x - GLOVE_LOCAL_X,
       GROUND_Y + (pivot.y - PIVOT.y) * 0.35,
+      GUARD_ACROSS,
     ))!;
     this.batsman.setPosition(feet.sx, feet.sy).setScale(feet.scale);
     const batP = this.camera.project(Camera.fromPhysics(this.bat.body.position.x, this.bat.body.position.y))!;
@@ -738,13 +697,6 @@ export class MatchScene extends Phaser.Scene {
     }
 
     this.draw(ball);
-
-    // Judged already: the ball rolls on for the eye, then goes.
-    if (this.judged) {
-      const settled = Math.hypot(ball.velocity.x, ball.velocity.y) < 0.2 && ball.position.y >= GROUND_Y - BALL_RADIUS - 2;
-      if (settled || this.time.now - this.judgedAt > 1300) this.retireBall();
-      return;
-    }
 
     const outcome = judgeBall({
       x: ball.position.x,
@@ -774,11 +726,6 @@ export class MatchScene extends Phaser.Scene {
       const downfield = metresDownfield(ball.position.x);
       const bearing = travelledBearing(downfield, this.bearing);
       const plan = planPosition(Math.abs(downfield), bearing);
-      // The chaser runs at where the ball will stop once it is rolling, and
-      // at where it is while it is in the air.
-      this.ballPlan = this.bouncedAfterStrike && isRolling(ball.position.y, ball.velocity.y)
-        ? planPosition(Math.min(predictRest(Math.abs(downfield), ball.velocity.x), 70), bearing)
-        : plan;
       acrossM = plan.across;
       world = Camera.fromPlan(plan.along, acrossM, heightPx);
       this.radar.live(Math.abs(downfield), bearing);
@@ -830,15 +777,7 @@ export class MatchScene extends Phaser.Scene {
       this.radar.trace(Math.abs(downfield), travelledBearing(downfield, this.bearing), outcome);
     }
 
-    // A ball along the ground keeps rolling while the fielder runs to it;
-    // a catch, a six, a wide or one through to the keeper is over now.
-    const rollsOn = this.struck && !outcome.wicket && outcome.runs !== 6 && this.bouncedAfterStrike;
-    if (rollsOn) {
-      this.judged = true;
-      this.judgedAt = this.time.now;
-    } else {
-      this.retireBall();
-    }
+    this.retireBall();
 
     this.announce(outcome, striker?.batter.id, runsBefore);
     this.renderHud();
@@ -856,8 +795,6 @@ export class MatchScene extends Phaser.Scene {
   private retireBall(): void {
     if (this.ball) this.matter.world.remove(this.ball);
     this.ball = undefined;
-    this.ballPlan = undefined;
-    this.judged = false;
     this.ballSprite.setVisible(false);
     this.radar.hideBall();
   }

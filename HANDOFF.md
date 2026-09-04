@@ -82,12 +82,12 @@ Read this first; everything below is the detail behind it.
   runner-up, or knocked out and where. A trophy card if you won, a card for
   the other endings, once, remembered on the save (`Season.told`). Your own
   fixture can be simulated instead of played.
-- **Fielders who move, and a keeper.** The nearest man runs at a struck
-  ball -- at it in the air, at where it will stop once it rolls -- and walks
-  back; the ball rolls on after the call instead of vanishing. A keeper
-  crouches behind the stumps. Left-handers were built as a mirror of the
-  ground and taken out again the same evening: from a camera square of the
-  wicket the mirrored field read as wrong, not as a left-hander.
+- **A keeper, and the players redrawn.** A keeper crouches behind the
+  stumps. The figures are about seven heads tall now, shoulders wider than
+  hips, tapered limbs, a sash, a thin dark edge; the striker takes leg-stump
+  guard so his stumps show in front of the pads from this camera. Fielders
+  who ran at the ball and left-handers were both built and both taken out
+  the same evening -- see traps 41 and 42.
 - **The team and season screens on the design system.** Both are DOM pages
   under `hud/screens/`; the Phaser scenes behind them only paint the ground
   and route. The franchise cards are broadcast team bugs, ratings are bars
@@ -110,9 +110,8 @@ Ordered by how much a player would notice.
 2. **The physics path produces bowled, caught, lbw and run-out**; stumped
    does not exist there. Close enough that a season's stats will not show
    it unless you look.
-3. **Deep point and third man are behind the camera**, on the radar only.
-   The fielders move but the judge does not watch them move: a ball is
-   decided from the set field, and the run is what you see him do about it.
+3. **Fielders do not move on screen**, and deep point and third man are
+   behind the camera, on the radar only.
 4. **No sound, no touch, no deploy, no season history.** M5.
 5. **Franchise names are not trademark-cleared.** Before anything ships.
 
@@ -184,7 +183,7 @@ attack costs; see *What is left*.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 167 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
+| Tests | 165 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
 | Source | ~5,950 lines across 31 files in `src/` (plus ~430 of CSS); ~2,150 across 13 in `tests/` |
@@ -309,8 +308,6 @@ compromises live in one file, and now every Matter body too.
   `swing.ts`. Still the file that decides whether the game feels good
 - `src/game/physics/direction.ts` — pure. **The second axis.** Bearing from
   contact, the plan geometry, the side-on projection, and the region names
-- `src/game/physics/chase.ts` — pure. `nearestTo` and `stepToward`: the
-  fielders' running, in plan metres. Visual only; the judge never reads it
 - `src/game/physics/field.ts` — pure. Three nine-man fields by phase, catch
   and cut-off reach, rolling and the rest prediction, and `judgeBall` — the
   one function that decides what a ball was, called by scene and harness alike
@@ -718,6 +715,14 @@ side, a collar, a trim, straps, soles, fingers -- each is two lines of code
 and the sum is a person at 90px. The features are dealt from the player id
 so they are stable; nothing here is an asset, and the repo still has none.
 
+**42. Fielders who ran at the ball, on a judge who never saw them move.**
+The nearest man ran at the ball and the ball rolled on after the call while
+he got there. It looked weird, and it was: the judge decides from the set
+field, so the man arriving had nothing to do with the result, and a ball
+rolling past a fielder who had "stopped" it is the two disagreeing on
+screen. Removed with the afterglow. Moving fielders need the judge to
+watch them move, which is a different field model, not an animation.
+
 **41. Left-handers as a mirrored ground.** Flip `across` for the field,
 the ball, the radar and the delivery line, put the bat on the near side,
 and a left-hander is on screen with the physics untouched. It looked wrong:
@@ -821,9 +826,7 @@ Left-handers. A keeper.
 - **The direction model is fitted to the harness's timing distribution.**
   If playtesters report everything going to one side, re-measure
   `NEUTRAL_AHEAD` against how people actually time it.
-- **The fielders' running is cosmetic.** The judge decides from the set
-  field; a fielder seen arriving at a ball he did not "stop" is the two
-  disagreeing, and the judge is right. Deep point and third man are behind
+- **Fielders do not move on screen.** Deep point and third man are behind
   the camera and are on the radar only.
 - **The strip is DOM and the radar is canvas.** They sit in different
   layers. Fine until something needs to be drawn over the strip.
@@ -836,8 +839,7 @@ Left-handers. A keeper.
 - **A wide is only slightly visible as a wide.** 1.4m outside off, faint,
   through the bat, called at the keeper.
 - **A ball is judged the moment it is rolling**, from a predicted rest
-  point; it now rolls on for up to 1.3s after the call while the fielder
-  runs to it, then goes.
+  point, and vanishes mid-roll as the call comes up.
 - **Catch reach uses wall-clock time**; on a throttled tab it under-counts
   catches. The harness uses simulated time.
 - **A tied playoff goes to the higher-placed side.** No super over.
