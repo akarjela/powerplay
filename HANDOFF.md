@@ -82,12 +82,17 @@ Read this first; everything below is the detail behind it.
   runner-up, or knocked out and where. A trophy card if you won, a card for
   the other endings, once, remembered on the save (`Season.told`). Your own
   fixture can be simulated instead of played.
-- **Fielders who move, a keeper, left-handers.** The nearest man runs at a
-  struck ball -- at it in the air, at where it will stop once it rolls --
-  and walks back; the ball rolls on after the call instead of vanishing. A
-  keeper crouches behind the stumps. A third of each order bats left (a
-  `*` on the name in franchises.ts): the ground mirrors across the pitch for
-  them, the bat sits on the near side, the strip tags them `L`.
+- **Fielders who move, and a keeper.** The nearest man runs at a struck
+  ball -- at it in the air, at where it will stop once it rolls -- and walks
+  back; the ball rolls on after the call instead of vanishing. A keeper
+  crouches behind the stumps. Left-handers were built as a mirror of the
+  ground and taken out again the same evening: from a camera square of the
+  wicket the mirrored field read as wrong, not as a left-hander.
+- **The team and season screens on the design system.** Both are DOM pages
+  under `hud/screens/`; the Phaser scenes behind them only paint the ground
+  and route. The franchise cards are broadcast team bugs, ratings are bars
+  by band, the table marks the top four and your row, the fixture panel
+  has Play / Simulate instead / Sim to my next match.
 
 ### What is left
 
@@ -108,20 +113,15 @@ Ordered by how much a player would notice.
 3. **Deep point and third man are behind the camera**, on the radar only.
    The fielders move but the judge does not watch them move: a ball is
    decided from the set field, and the run is what you see him do about it.
-4. **The menu scenes are still Phaser text on a 1280x720 frame**, zoomed to
-   fit. They work and they fill the window, but they are not on the design
-   system; the strip, the cards and the innings replay are. Moving them to
-   the DOM layer is the obvious next UI step.
-5. **No sound, no touch, no deploy, no season history.** M5.
-6. **Franchise names are not trademark-cleared.** Before anything ships.
+4. **No sound, no touch, no deploy, no season history.** M5.
+5. **Franchise names are not trademark-cleared.** Before anything ships.
 
 ### What is next
 
 In order, with the reasoning in *Next steps* below:
 
 1. Decide what to do with the two-path gap (see *What is left*).
-2. The team and season screens onto the design system, in the DOM.
-3. M5: sound, touch, deploy, season history.
+2. M5: sound, touch, deploy, season history.
 
 ## Goal
 
@@ -376,24 +376,23 @@ assembles a model each ball; nothing here knows the game.
   end of over. Never two at once
 - `src/game/hud/card.ts` -- the toss and result cards on a scrim
 - `src/game/hud/dom.ts` -- `hudRoot`, `el`, `reducedMotion()`
+- `src/game/hud/screens/teamScreen.ts`, `seasonScreen.ts` -- the two
+  pages. Handlers in, DOM out; the scenes route
+- `src/game/hud/fateCard.ts` -- the end of your season, once
 
 **The viewport**
 
 - `src/game/view/camera.ts` also has `cameraForViewport` and
   `viewportScale`: the design camera scaled to cover the window, anchored on
   the striker's feet, capped so the straight rope stays on screen
-- `src/game/view/fit.ts` -- the menu scenes zoom their 1280x720 frame to fit
 - `src/game/visuals/crowd.ts` -- the crowd as four crossfaded frames;
   `react()` on a boundary or a wicket
 
 **Scenes and visuals**
 
-- `src/game/scenes/SelectScene.ts` — two modes. Quick match: the side you
-  bat for and the side you face, both elevens with rating bars. Season: the
-  franchise you carry, and a way back into a saved season
-- `src/game/scenes/SeasonScene.ts` — the table, the fixture in hand (play it
-  if it is yours, simulate it if not, or sim to your next), recent results,
-  the bracket, the champion
+- `src/game/scenes/SelectScene.ts` — mounts the team screen and routes
+- `src/game/scenes/SeasonScene.ts` — owns the saved season: resolves
+  fixtures, mounts the season screen, tells your fate once
 - `src/game/scenes/MatchScene.ts` — a match: toss card, your innings with the
   bat, the model's innings before or after, a result card, the fixture
   recorded into the season if there is one. Plus everything it did before:
@@ -719,6 +718,15 @@ side, a collar, a trim, straps, soles, fingers -- each is two lines of code
 and the sum is a person at 90px. The features are dealt from the player id
 so they are stable; nothing here is an asset, and the repo still has none.
 
+**41. Left-handers as a mirrored ground.** Flip `across` for the field,
+the ball, the radar and the delivery line, put the bat on the near side,
+and a left-hander is on screen with the physics untouched. It looked wrong:
+from a camera square of the wicket, a mirrored field reads as the fielders
+having moved, not as the batter having changed, and the bat behind the body
+read as a drawing error. Removed. A left-hander needs a batter drawn the
+other way round and a camera that follows him to the other side, which is a
+real piece of work rather than a sign flip.
+
 **40. Bands fitted on one seed, again.** The bridge test's first bands came
 from one sweep of 600 balls and held with room to spare. Adding one random
 draw per ball (the run-out roll) shifted the sequence and the wicket gap
@@ -817,8 +825,6 @@ Left-handers. A keeper.
   field; a fielder seen arriving at a ball he did not "stop" is the two
   disagreeing, and the judge is right. Deep point and third man are behind
   the camera and are on the radar only.
-- **A left-hander is a mirror of the drawing only.** The sim's lines are
-  batter-relative already; bowlers do not yet change their plan for one.
 - **The strip is DOM and the radar is canvas.** They sit in different
   layers. Fine until something needs to be drawn over the strip.
 - **The pointer is not tracked over the next-ball button.** Everything else

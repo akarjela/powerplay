@@ -16,8 +16,6 @@ export type Rating = number;
 export interface Batter {
   id: string;
   name: string;
-  /** Left-handers face the other way. Absent means right. Cosmetic to the sim; the scene mirrors the ground. */
-  bats?: "left";
   /** Clearing the rope. Drives the four and six weights, nothing else. */
   power: Rating;
   /** Not getting out. The direct counterweight to a bowler's threat. */

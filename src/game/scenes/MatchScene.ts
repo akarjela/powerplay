@@ -170,8 +170,6 @@ export class MatchScene extends Phaser.Scene {
   /** The judge has spoken; the ball rolls on for the eye only. */
   private judged = false;
   private judgedAt = 0;
-  /** -1 for a left-hander: the whole ground mirrors across the pitch. */
-  private mirror: 1 | -1 = 1;
 
   constructor() {
     super("match");
@@ -204,7 +202,6 @@ export class MatchScene extends Phaser.Scene {
     this.chaser = undefined;
     this.ballPlan = undefined;
     this.judged = false;
-    this.mirror = 1;
     this.ball = undefined;
     this.awaitingResult = false;
     this.stance = "neutral";
@@ -546,7 +543,7 @@ export class MatchScene extends Phaser.Scene {
       projected: need ? undefined : Math.round(innings.balls === 0 ? 0 : innings.runs + innings.runRate * (OVERS - innings.balls / BALLS_PER_OVER)),
       par: need ? undefined : PAR_RATE,
       batters: innings.atTheCrease.map((l, i) => ({
-        name: l.batter.name, runs: l.runs, balls: l.balls, strikeRate: strikeRateOf(l), onStrike: i === 0, left: l.batter.bats === "left",
+        name: l.batter.name, runs: l.runs, balls: l.balls, strikeRate: strikeRateOf(l), onStrike: i === 0,
       })),
       over: { number: innings.thisOverNumber, balls: innings.thisOver, runs: innings.thisOverRuns },
       bowler: line && {
@@ -585,30 +582,16 @@ export class MatchScene extends Phaser.Scene {
     this.striker = batter;
     this.batsman?.destroy();
     this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(0, 1));
-
-    // A left-hander faces the same bowler with the ground the other way
-    // round: leg side toward the camera, the field a mirror image, the bat
-    // on the near side of the body. The physics is side-on and does not
-    // care; the judge works in the batter's own bearings and does not
-    // either. Only what is drawn changes.
-    const mirror: 1 | -1 = batter.bats === "left" ? -1 : 1;
-    this.batGfx.setDepth(depthFor(0, mirror === -1 ? 0.5 : 2));
-    if (mirror !== this.mirror) {
-      this.mirror = mirror;
-      this.setField(this.field);
-      this.placeKeeper();
-      this.radar.setMirror(mirror, this.field);
-    }
   }
 
   /** The keeper, a few metres behind the stumps, crouched. */
   private placeKeeper(): void {
     this.keeper?.destroy();
-    const p = this.camera.project(Camera.fromPhysics(BATTER_X - m(3.2), GROUND_Y, 0.3 * this.mirror));
+    const p = this.camera.project(Camera.fromPhysics(BATTER_X - m(3.2), GROUND_Y, 0.3));
     if (!p) return;
     const squad = this.sides.them.squad.batters;
     this.keeper = drawKeeper(this, this.sides.them.colours, lookFor(squad[squad.length - 1].id))
-      .setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(0.3 * this.mirror, 0));
+      .setPosition(p.sx, p.sy).setScale(p.scale).setDepth(depthFor(0.3, 0));
   }
 
   // -- the field and the attack ------------------------------------------------
@@ -631,7 +614,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Project a fielder's plan position to the screen. Off-screen men are hidden, not culled. */
   private placeFielder(f: { gfx: Phaser.GameObjects.Container; at: PlanPoint }): void {
-    const across = f.at.across * this.mirror;
+    const across = f.at.across;
     const p = this.camera.ground(f.at.along, across);
     const visible = Boolean(p && p.sx > -80 && p.sx < this.view.width + 80 && p.sy < this.view.height + 80);
     f.gfx.setVisible(visible);
@@ -796,11 +779,11 @@ export class MatchScene extends Phaser.Scene {
       this.ballPlan = this.bouncedAfterStrike && isRolling(ball.position.y, ball.velocity.y)
         ? planPosition(Math.min(predictRest(Math.abs(downfield), ball.velocity.x), 70), bearing)
         : plan;
-      acrossM = plan.across * this.mirror;
+      acrossM = plan.across;
       world = Camera.fromPlan(plan.along, acrossM, heightPx);
       this.radar.live(Math.abs(downfield), bearing);
     } else {
-      acrossM = (this.delivery?.illegal === "wide" ? WIDE_ACROSS : LINE_ACROSS[this.delivery?.line ?? "stumps"]) * this.mirror;
+      acrossM = this.delivery?.illegal === "wide" ? WIDE_ACROSS : LINE_ACROSS[this.delivery?.line ?? "stumps"];
       world = Camera.fromPhysics(ball.position.x, ball.position.y, acrossM);
     }
 

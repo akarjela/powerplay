@@ -28,7 +28,7 @@ export interface ScoreboardModel {
   projected?: number;
   /** Batting first: the rate a par first innings runs at, for the axis. */
   par?: number;
-  batters: { name: string; runs: number; balls: number; strikeRate: number; onStrike: boolean; left?: boolean }[];
+  batters: { name: string; runs: number; balls: number; strikeRate: number; onStrike: boolean }[];
   over: { number: number; balls: readonly BallMark[]; runs: number };
   bowler?: { name: string; overs: string; maidens: number; runs: number; wickets: number; economy: number; speedKph?: number };
   action: { label: string; enabled: boolean; waiting: boolean };
@@ -277,7 +277,7 @@ function fillBatter(row: HTMLElement, b?: ScoreboardModel["batters"][number]): v
     sr.textContent = "";
     return;
   }
-  name.textContent = surname(b.name) + (b.left ? " ·L" : "");
+  name.textContent = surname(b.name);
   r.textContent = `${b.runs}${b.onStrike ? "*" : ""}`;
   balls.textContent = `(${b.balls})`;
   sr.textContent = `sr ${b.strikeRate.toFixed(0)}`;
