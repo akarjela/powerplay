@@ -42,9 +42,9 @@ Read this first; everything below is the detail behind it.
 - **M3, the squads half.** Ten fictional franchises with authored elevens,
   kits and grounds; you bat against their real six, rotated legally; your
   batting order, strike rotation and scorecard are kept.
-- **A real match.** Toss, two innings, a target when you are put in with the
-  required rate on the strip, the model chasing you when you are not, a
-  result card.
+- **A real match.** Toss -- your call if you win it, bat or bowl -- two
+  innings, a target when you are put in with the required rate on the strip,
+  the model chasing you when you are not, a result card.
 - **M4 — the season.** Round robin of ten, points table with net run rate,
   the IPL bracket to a champion, saved in localStorage; your fixtures played,
   the rest simulated.
@@ -742,7 +742,10 @@ not start CSS animations, so every moment appeared not to render and a
 the animations by hand -- `document.getAnimations().forEach(a => { a.pause();
 a.currentTime = 300 })` -- and screenshot the paused frame. Pair with
 `await import('/src/game/hud/moments.ts')` to reach a module's exports in
-the page, since Vite serves the same instance.
+the page, since Vite serves the same instance. When the tab is fully
+backgrounded Phaser's loop stops too and a queued `scene.start` never
+runs; `window.__game.step(performance.now(), 16)` a few times processes
+it by hand.
 
 **36. Covering a 4:3 window by height.** Scale the design frame to cover a
 tall viewport and the off side is cropped past the straight rope: a

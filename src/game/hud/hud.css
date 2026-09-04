@@ -279,6 +279,19 @@
 .card .line { font-size: clamp(14px, 2.2vh, 19px); color: var(--fg-dim); line-height: 1.5; font-variant-numeric: tabular-nums; }
 .card .line.strong { color: var(--fg); font-weight: 600; }
 .card .prompt { margin-top: clamp(14px, 3vh, 24px); font-family: var(--display); font-size: clamp(16px, 2.6vh, 22px); letter-spacing: 0.08em; color: var(--live); }
+.card .choices { display: flex; justify-content: center; gap: 10px; margin-top: clamp(14px, 3vh, 24px); }
+.card .choices button {
+  pointer-events: auto; cursor: pointer; appearance: none; border: 0; margin: 0;
+  padding: 0 clamp(18px, 2.2vw, 32px); height: clamp(34px, 5.5vh, 46px);
+  font-family: var(--display); font-size: calc(var(--t-big) * 0.85); letter-spacing: 0.06em;
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+}
+.card .choices button.primary { background: var(--live); color: var(--on-live); }
+.card .choices button.primary:hover { background: #5cf0ff; }
+.card .choices button.ghost { background: var(--ink-2); color: var(--fg); }
+.card .choices button.ghost:hover { background: var(--line); }
+.card .choices button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- moments */
 

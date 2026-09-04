@@ -321,21 +321,42 @@ export class MatchScene extends Phaser.Scene {
   // -- the match --------------------------------------------------------------
 
   /**
-   * The toss, and whatever follows it before you can bat. The side that wins
-   * mostly chooses to chase, as sides do; if that leaves you batting second,
-   * their innings is rolled now and its total is your target.
+   * The toss. Win it and the choice is yours -- bat, or bowl and chase. Lose
+   * it and the other side mostly chooses to chase, as sides do. Either way
+   * `decide` takes it from there.
    */
   private toss(): void {
     const { you, them } = this.sides;
     const youWon = this.rng.chance(0.5);
+    this.stage = "toss";
+    this.renderHud();
+
+    if (youWon) {
+      // Your call. Sides mostly chase, and so may you.
+      showCard({
+        title: this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`,
+        lines: [{ text: `${you.name} won the toss.`, strong: true }, { text: "Bat first and set a total, or bowl and chase whatever they make." }],
+        prompt: "",
+        colours: you.colours,
+        choices: [
+          { label: "Bat first", onPick: () => this.decide(true, `${you.name} won the toss and chose to bat.`) },
+          { label: "Bowl first", primary: true, onPick: () => this.decide(false, `${you.name} won the toss and chose to field.`) },
+        ],
+      }, () => undefined);
+      return;
+    }
+
     const chase = this.rng.chance(0.75);
-    // Whoever won chooses; chasing means the other side bats first.
-    this.youBatFirst = youWon ? !chase : chase;
+    this.decide(chase, `${them.name} won the toss and chose to ${chase ? "field" : "bat"}.`);
+  }
 
-    const lines: { text: string; strong?: boolean }[] = [];
-    lines.push({ text: `${youWon ? you.name : them.name} won the toss and chose to ${chase ? "field" : "bat"}.` });
+  /** The toss is settled: who bats first. If it is them, their innings is rolled now and is your target. */
+  private decide(youBatFirst: boolean, said: string): void {
+    const { you, them } = this.sides;
+    this.youBatFirst = youBatFirst;
 
-    if (!this.youBatFirst) {
+    const lines: { text: string; strong?: boolean }[] = [{ text: said }];
+    if (!youBatFirst) {
       this.theirInnings = simulateInnings(them.squad, you.squad, this.rng);
       this.innings = new HumanInnings(you.squad, this.theirInnings.runs + 1);
       lines.push({ text: `${them.name} bat first. Whatever they make, you chase.`, strong: true });
@@ -347,7 +368,7 @@ export class MatchScene extends Phaser.Scene {
     showCard({
       title: this.fixture ? this.fixtureTitle() : `${you.name} v ${them.name}`,
       lines,
-      prompt: this.youBatFirst ? "Take guard" : "Watch their innings",
+      prompt: youBatFirst ? "Take guard" : "Watch their innings",
       colours: you.colours,
     }, () => this.onClick());
     this.renderHud();
