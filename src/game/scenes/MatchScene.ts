@@ -51,8 +51,6 @@ import type { Fixture, Season } from "../../sim/tournament";
  */
 const LINE_ACROSS: Record<Line, number> = { leg: 0.3, stumps: 0, off: -0.3, "wide-off": -0.8 };
 const WIDE_ACROSS = -1.4;
-/** Metres toward leg the striker stands from the stumps' line: leg-stump guard. */
-const GUARD_ACROSS = 0.45;
 
 /**
  * The rate a par first innings runs at: the calibrated ~165 over twenty. When
@@ -308,9 +306,8 @@ export class MatchScene extends Phaser.Scene {
     for (const key of stale) if (!this.bakedKeys.includes(key)) this.textures.remove(key);
     for (const g of this.stumps) g.destroy();
     this.stumps = [
-      // The striker's stumps draw over him (he stands to leg of them) and
-      // under the bat, which is in front of everything at the crease.
-      drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, 1.5)),
+      // The striker stands a stride in front of his stumps; they draw behind him.
+      drawStumps(this, this.camera, BATTER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, 0.5)),
       drawStumps(this, this.camera, BOWLER_X, Camera.fromPhysics, GROUND_Y, depthFor(0, -0.5)),
     ];
     this.setField(this.field);
@@ -573,7 +570,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.striker?.id === batter.id) return;
     this.striker = batter;
     this.batsman?.destroy();
-    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(GUARD_ACROSS, 1));
+    this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(0, 1));
   }
 
   /** The keeper, a few metres behind the stumps, crouched. */
@@ -670,13 +667,9 @@ export class MatchScene extends Phaser.Scene {
       physicsX: pivot.x, physicsY: pivot.y, projected: pivotP,
     }));
 
-    // Leg-stump guard: the striker stands a little to the leg side of the
-    // stumps, so from a camera on the off side they show in front of his
-    // pads, as they do on television. The bat stays in the physics plane.
     const feet = this.camera.project(Camera.fromPhysics(
       pivot.x - GLOVE_LOCAL_X,
       GROUND_Y + (pivot.y - PIVOT.y) * 0.35,
-      GUARD_ACROSS,
     ))!;
     this.batsman.setPosition(feet.sx, feet.sy).setScale(feet.scale);
     const batP = this.camera.project(Camera.fromPhysics(this.bat.body.position.x, this.bat.body.position.y))!;

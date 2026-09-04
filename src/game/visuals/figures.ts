@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { BALL_RADIUS, BAT_LENGTH, BAT_WIDTH, STUMP_HEIGHT } from "../config";
+import { BALL_RADIUS, BAT_LENGTH, BAT_WIDTH, GLOVE_LOCAL_X, STUMP_HEIGHT } from "../config";
 import type { Camera, Projected } from "../view/camera";
 
 /**
@@ -260,7 +260,8 @@ function drawShades(g: G, x: number, y: number, r: number): void {
 /**
  * A batsman at the crease, facing the bowler (to the right). Origin at the
  * feet; the gloves at (GLOVE_LOCAL_X, handsLocalY) so the bat is in them.
- * Side-on stance, weight over the front foot, head over the ball.
+ * Side-on stance a stride in front of the stumps, weight over the front
+ * foot, head over the ball.
  */
 export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, look: Look): Phaser.GameObjects.Container {
   const c = scene.add.container(0, 0);
@@ -292,17 +293,20 @@ export function drawBatsman(scene: Phaser.Scene, handsLocalY: number, kit: Kit, 
   drawFaceProfile(g, hx, hy, 7.5, look);
   drawHelmet(g, hx, hy, 7.5, kit);
 
-  // Arms: back arm with a guard, front arm over it, both down to the hands.
-  limb(g, 2, -84, 8, 6, handsLocalY - 4, 6, kit.primary, darken(kit.primary, 0.32));
-  g.fillStyle(0xe5e7eb).fillRoundedRect(2, -70, 7, 11, 3);
-  limb(g, 10, -84, 8, 10, handsLocalY - 6, 6, kit.primary);
-  limb(g, 8, handsLocalY - 8, 5, 9.5, handsLocalY - 1, 4.5, look.skin);
+  // Arms: back arm with a guard, front arm over it, both down to the hands
+  // at (GLOVE_LOCAL_X, handsLocalY) -- by the back hip, where the bat rests
+  // in the stance.
+  const gx = GLOVE_LOCAL_X;
+  limb(g, 1, -84, 8, gx - 3, handsLocalY - 4, 6, kit.primary, darken(kit.primary, 0.32));
+  g.fillStyle(0xe5e7eb).fillRoundedRect(gx - 4, -72, 7, 11, 3);
+  limb(g, 9, -84, 8, gx + 1, handsLocalY - 6, 6, kit.primary);
+  limb(g, gx - 1, handsLocalY - 8, 5, gx, handsLocalY - 1, 4.5, look.skin);
   // Gloves: mitts with finger rolls and a wrist band.
-  g.fillStyle(0xf1f5f9).fillRoundedRect(4, handsLocalY - 4, 12, 9, 4).fillRoundedRect(5.5, handsLocalY - 11, 11, 8, 4);
-  for (let i = 0; i < 3; i++) g.fillStyle(0xdbe1ea).fillRoundedRect(8 + i * 2.6, handsLocalY - 2 + i * 1.4, 2.2, 6, 1);
-  g.fillStyle(kit.secondary, 0.9).fillRect(4, handsLocalY - 13, 12, 2.2);
-  g.fillStyle(kit.primary, 0.9).fillCircle(9.5, handsLocalY - 7, 1.8);
-  g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeRoundedRect(4, handsLocalY - 11, 12.5, 16, 4);
+  g.fillStyle(0xf1f5f9).fillRoundedRect(gx - 6, handsLocalY - 4, 12, 9, 4).fillRoundedRect(gx - 4.5, handsLocalY - 11, 11, 8, 4);
+  for (let i = 0; i < 3; i++) g.fillStyle(0xdbe1ea).fillRoundedRect(gx - 2 + i * 2.6, handsLocalY - 2 + i * 1.4, 2.2, 6, 1);
+  g.fillStyle(kit.secondary, 0.9).fillRect(gx - 6, handsLocalY - 13, 12, 2.2);
+  g.fillStyle(kit.primary, 0.9).fillCircle(gx - 0.5, handsLocalY - 7, 1.8);
+  g.lineStyle(1, EDGE, OUTLINE_ALPHA).strokeRoundedRect(gx - 6, handsLocalY - 11, 12.5, 16, 4);
 
   c.add(g);
   return c;

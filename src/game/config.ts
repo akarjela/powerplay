@@ -320,5 +320,11 @@ export const PIVOT = { x: BATTER_X + 22, y: GROUND_Y - 62 };
  * The two were set independently before and disagreed by 8px. That was
  * invisible while both were static and would have read as the bat detaching
  * from the hands the moment the pivot started moving.
+ *
+ * Negative: the hands sit a touch behind the body's centre, by the back hip,
+ * which is where a batter in his stance holds them -- and it stands the
+ * figure a stride in front of the stumps (his feet at 13-27px from them)
+ * so they show behind him from square of the wicket. The pivot itself is
+ * physics and does not move.
  */
-export const GLOVE_LOCAL_X = 10;
+export const GLOVE_LOCAL_X = -4;

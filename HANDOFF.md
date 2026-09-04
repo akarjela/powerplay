@@ -84,8 +84,9 @@ Read this first; everything below is the detail behind it.
   fixture can be simulated instead of played.
 - **A keeper, and the players redrawn.** A keeper crouches behind the
   stumps. The figures are about seven heads tall now, shoulders wider than
-  hips, tapered limbs, a sash, a thin dark edge; the striker takes leg-stump
-  guard so his stumps show in front of the pads from this camera. Fielders
+  hips, tapered limbs, a sash, a thin dark edge; the striker stands a stride
+  in front of his stumps, hands by the back hip, so the stumps show behind
+  him. Fielders
   who ran at the ball and left-handers were both built and both taken out
   the same evening -- see traps 41 and 42.
 - **The team and season screens on the design system.** Both are DOM pages
@@ -828,6 +829,10 @@ Left-handers. A keeper.
   `NEUTRAL_AHEAD` against how people actually time it.
 - **Fielders do not move on screen.** Deep point and third man are behind
   the camera and are on the radar only.
+- **The striker's figure is placed by `GLOVE_LOCAL_X`**, now negative: the
+  hands are behind the body's centre and the figure a stride in front of
+  the stumps. Moving him is that one constant; the pivot is physics and
+  stays where it was measured.
 - **The strip is DOM and the radar is canvas.** They sit in different
   layers. Fine until something needs to be drawn over the strip.
 - **The pointer is not tracked over the next-ball button.** Everything else
