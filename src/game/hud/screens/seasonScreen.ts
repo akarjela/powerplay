@@ -2,7 +2,7 @@ import { franchiseById } from "../../../data/franchises";
 import type { Franchise } from "../../../data/franchises";
 import { oversOf } from "../../../sim/innings";
 import {
-  champion, involvesYou, isOver, nextFixture, playoffs, standings,
+  caps, champion, involvesYou, isOver, nextFixture, playoffs, standings,
 } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
 import { el, hex, hudRoot, ordinal } from "../dom";
@@ -49,7 +49,7 @@ export class SeasonScreen {
     this.body.append(head);
 
     const grid = el("div", "season-grid");
-    grid.append(this.table(season), this.fixturePanel(season), this.results(season));
+    grid.append(this.table(season), this.fixturePanel(season), this.results(season), this.capsPanel(season));
     this.body.append(grid);
   }
 
@@ -174,6 +174,32 @@ export class SeasonScreen {
       item.append(line, el("div", "summary", r.summary));
       panel.append(item);
     }
+    return panel;
+  }
+
+  private capsPanel(season: Season): HTMLElement {
+    const { orange, purple } = caps(season);
+    const panel = el("section", "panel caps");
+    const list = (kind: "orange" | "purple", title: string, rows: HTMLElement[]) => {
+      const col = el("div", `cap ${kind}`);
+      const head = el("div", "cap-head");
+      head.append(el("span", "cap-icon"), el("span", "label", title));
+      col.append(head);
+      if (rows.length === 0) col.append(el("p", "note", "Nobody yet."));
+      for (const r of rows) col.append(r);
+      return col;
+    };
+    const row = (i: number, name: string, squad: string, fig: string, sub: string, you: boolean) => {
+      const r = el("div", `cap-row ${you ? "is-you" : ""}`);
+      const f = franchiseById(squad);
+      r.style.setProperty("--flag-primary", hex(f.colours.primary));
+      r.append(el("span", "pos", String(i + 1)), el("span", "flag"), el("span", "name", name), el("span", "code", f.code), el("span", "fig", fig), el("span", "sub", sub));
+      return r;
+    };
+    panel.append(
+      list("orange", "Orange cap", orange.map((t, i) => row(i, t.name, t.squad, String(t.runs), `${t.innings} inn · sr ${t.balls ? ((t.runs / t.balls) * 100).toFixed(0) : "—"}`, t.squad === season.you))),
+      list("purple", "Purple cap", purple.map((t, i) => row(i, t.name, t.squad, String(t.wickets), `${oversOf(t.balls)} ov · econ ${t.balls ? ((t.runs / t.balls) * 6).toFixed(2) : "—"}`, t.squad === season.you))),
+    );
     return panel;
   }
 

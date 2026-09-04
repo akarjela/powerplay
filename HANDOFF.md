@@ -95,6 +95,10 @@ Read this first; everything below is the detail behind it.
   him. Fielders
   who ran at the ball and left-handers were both built and both taken out
   the same evening -- see traps 41 and 42.
+- **The orange and purple caps.** Every result carries a card of who scored
+  and who took what (`Played.cards`; an older save without them is simply
+  not counted), and `caps()` ranks the top five run scorers and wicket
+  takers across the season, shown under the table.
 - **The team and season screens on the design system.** Both are DOM pages
   under `hud/screens/`; the Phaser scenes behind them only paint the ground
   and route. The franchise cards are broadcast team bugs, ratings are bars
@@ -854,6 +858,9 @@ Left-handers. A keeper.
 - **Catch reach uses wall-clock time**; on a throttled tab it under-counts
   catches. The harness uses simulated time.
 - **A tied playoff goes to the higher-placed side.** No super over.
+- **Your own fixture's card is built by the scene** in `settle()` from the
+  human innings and the bowling map; a simulated fixture's comes from
+  `cardOf`. Two builders for one shape; if the shape grows, grow both.
 - **The season is one localStorage key.** No history, no export, and a
   change to the `Season` shape needs a version bump in `store.ts` or old
   saves will be read as garbage (they are validated loosely and dropped).

@@ -41,7 +41,8 @@ import { unit } from "../../sim/player";
 import { FRANCHISES, franchiseById } from "../../data/franchises";
 import type { Franchise } from "../../data/franchises";
 import { loadSeason, saveSeason } from "../season/store";
-import { fixtureById, playedFrom, recordResult } from "../../sim/tournament";
+import { cardOf, fixtureById, playedFrom, recordResult } from "../../sim/tournament";
+import type { InningsCard } from "../../sim/tournament";
 import type { Fixture, Season } from "../../sim/tournament";
 
 const LINE_ACROSS: Record<Line, number> = { leg: 0.3, stumps: 0, off: -0.3, "wide-off": -0.8 };
@@ -425,8 +426,17 @@ export class MatchScene extends Phaser.Scene {
     ];
 
     if (this.season && this.fixture) {
-      const played = playedFrom(this.fixture, first, second);
-      this.season = recordResult(this.season, played);
+      const yourCard: InningsCard = {
+        batting: this.innings.battingLines.filter((l) => l.balls > 0 || l.runs > 0).map((l) => ({
+          id: l.batter.id, name: l.batter.name, squad: you.id, runs: l.runs, balls: l.balls,
+        })),
+        bowling: [...this.bowling.values()].filter((l) => l.balls > 0).map((l) => ({
+          id: l.bowler.id, name: l.bowler.name, squad: them.id, wickets: l.wickets, runs: l.runs, balls: l.balls,
+        })),
+      };
+      const theirCard = cardOf(theirs, you.id);
+      const cards = this.youBatFirst ? { first: yourCard, second: theirCard } : { first: theirCard, second: yourCard };
+      this.season = recordResult(this.season, playedFrom(this.fixture, first, second, cards));
       saveSeason(this.season);
     }
 

@@ -1,7 +1,7 @@
 import type { Rng } from "./rng";
 import type { Squad } from "./player";
 import { simulateMatch, netRunRateInnings, resultOf } from "./match";
-import type { InningsSummary } from "./innings";
+import type { InningsResult, InningsSummary } from "./innings";
 
 export type Stage = "league" | "qualifier1" | "eliminator" | "qualifier2" | "final";
 
@@ -21,10 +21,33 @@ export interface InningsLine {
   balls: number;
 }
 
+export interface PlayerRuns {
+  id: string;
+  name: string;
+  squad: string;
+  runs: number;
+  balls: number;
+}
+
+export interface PlayerWickets {
+  id: string;
+  name: string;
+  squad: string;
+  wickets: number;
+  runs: number;
+  balls: number;
+}
+
+export interface InningsCard {
+  batting: PlayerRuns[];
+  bowling: PlayerWickets[];
+}
+
 export interface Played {
   fixtureId: string;
   first: InningsLine;
   second: InningsLine;
+  cards?: { first: InningsCard; second: InningsCard };
 
   winner: string | null;
   summary: string;
@@ -199,20 +222,77 @@ export function simulateFixture(
     fixtureId: fixture.id,
     first: lineOf(match.first),
     second: lineOf(match.second),
+    cards: { first: cardOf(match.first, match.second.squad.id), second: cardOf(match.second, match.first.squad.id) },
     winner: match.winner?.id ?? null,
     summary: match.summary,
   };
 }
 
-export function playedFrom(fixture: Fixture, first: InningsSummary, second: InningsSummary): Played {
+export function playedFrom(
+  fixture: Fixture,
+  first: InningsSummary,
+  second: InningsSummary,
+  cards?: { first: InningsCard; second: InningsCard },
+): Played {
   const result = resultOf(first, second);
   return {
     fixtureId: fixture.id,
     first: lineOf(first),
     second: lineOf(second),
+    cards,
     winner: result.winner?.id ?? null,
     summary: result.summary,
   };
+}
+
+export function cardOf(innings: InningsResult, bowlingSquad: string): InningsCard {
+  return {
+    batting: innings.batting.filter((l) => l.balls > 0 || l.runs > 0).map((l) => ({
+      id: l.batter.id, name: l.batter.name, squad: innings.squad.id, runs: l.runs, balls: l.balls,
+    })),
+    bowling: innings.bowling.filter((l) => l.balls > 0).map((l) => ({
+      id: l.bowler.id, name: l.bowler.name, squad: bowlingSquad, wickets: l.wickets, runs: l.runs, balls: l.balls,
+    })),
+  };
+}
+
+export interface CapHolders {
+  orange: (PlayerRuns & { innings: number })[];
+  purple: (PlayerWickets & { innings: number })[];
+}
+
+export function caps(season: Season, top = 5): CapHolders {
+  const runs = new Map<string, PlayerRuns & { innings: number }>();
+  const wickets = new Map<string, PlayerWickets & { innings: number }>();
+  for (const played of season.results) {
+    if (!played.cards) continue;
+    for (const card of [played.cards.first, played.cards.second]) {
+      for (const b of card.batting) {
+        const t = runs.get(b.id) ?? { ...b, runs: 0, balls: 0, innings: 0 };
+        t.runs += b.runs;
+        t.balls += b.balls;
+        t.innings += 1;
+        runs.set(b.id, t);
+      }
+      for (const w of card.bowling) {
+        const t = wickets.get(w.id) ?? { ...w, wickets: 0, runs: 0, balls: 0, innings: 0 };
+        t.wickets += w.wickets;
+        t.runs += w.runs;
+        t.balls += w.balls;
+        t.innings += 1;
+        wickets.set(w.id, t);
+      }
+    }
+  }
+  const orange = [...runs.values()]
+    .filter((t) => t.runs > 0)
+    .sort((a, b) => b.runs - a.runs || b.runs / Math.max(1, b.balls) - a.runs / Math.max(1, a.balls))
+    .slice(0, top);
+  const purple = [...wickets.values()]
+    .filter((t) => t.wickets > 0)
+    .sort((a, b) => b.wickets - a.wickets || a.runs / Math.max(1, a.balls) - b.runs / Math.max(1, b.balls))
+    .slice(0, top);
+  return { orange, purple };
 }
 
 const lineOf = (innings: InningsSummary): InningsLine => ({

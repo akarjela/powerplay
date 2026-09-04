@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  champion, createSeason, fate, involvesYou, isOver, leagueComplete, nextFixture, playedFrom, playoffWinner, playoffs, recordResult, resultFor, simulateFixture, standings,
+  caps, champion, createSeason, fate, involvesYou, isOver, leagueComplete, nextFixture, playedFrom, playoffWinner, playoffs, recordResult, resultFor, simulateFixture, standings,
 } from "../src/sim/tournament";
 import type { Played, Season } from "../src/sim/tournament";
 import { LEAGUE, franchiseById } from "../src/data/franchises";
@@ -215,5 +215,40 @@ describe("your fate", () => {
     expect(fate({ ...atLeagueEnd, you: fifth })).toMatchObject({ kind: "eliminated", stage: "league", place: 5 });
     const fourth = standings(atLeagueEnd)[3].squad;
     expect(fate({ ...atLeagueEnd, you: fourth })).toBeNull();
+  });
+});
+
+describe("the caps", () => {
+  it("are empty before anyone has played", () => {
+    expect(caps(createSeason(IDS, "mum", "caps"))).toEqual({ orange: [], purple: [] });
+  });
+
+  it("rank the top five run scorers and wicket takers across every result", () => {
+    let season = createSeason(IDS, "mum", "caps-season");
+    for (let i = 0; i < 20; i++) {
+      const f = nextFixture(season)!;
+      season = recordResult(season, simulateFixture(f, squadById, makeRng(`caps:${f.id}`)));
+    }
+    const { orange, purple } = caps(season);
+    expect(orange.length).toBe(5);
+    expect(purple.length).toBe(5);
+    for (let i = 1; i < 5; i++) {
+      expect(orange[i - 1].runs).toBeGreaterThanOrEqual(orange[i].runs);
+      expect(purple[i - 1].wickets).toBeGreaterThanOrEqual(purple[i].wickets);
+    }
+    const total = season.results.reduce((n, r) => n + (r.cards ? r.cards.first.batting.reduce((a, b) => a + b.runs, 0) : 0), 0);
+    const firstInningsRuns = season.results.reduce((n, r) => n + r.first.runs, 0);
+    expect(total).toBeLessThanOrEqual(firstInningsRuns);
+    expect(orange[0].innings).toBeGreaterThan(0);
+    expect(orange[0].balls).toBeGreaterThan(0);
+  });
+
+  it("ignore results that carry no card, as an older save would", () => {
+    let season = createSeason(IDS, "mum", "caps-old");
+    const f = nextFixture(season)!;
+    const played = simulateFixture(f, squadById, makeRng("old"));
+    delete played.cards;
+    season = recordResult(season, played);
+    expect(caps(season)).toEqual({ orange: [], purple: [] });
   });
 });
