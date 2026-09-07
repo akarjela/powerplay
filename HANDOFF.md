@@ -333,12 +333,14 @@ than at 92. The bands in the test sit under these numbers.
 
 | | |
 | --- | --- |
-| Pool | 110 players worth 876 cr in total, against 1000 cr of purses |
+| Pool | 110 players worth 492 cr in total, against 1000 cr of purses |
 | Tiers by rank | Marquee 17, Frontline 28, Core 33, Squad 22, Reserve 10 |
-| AI spend | 99.9-100 of 100 cr, every side |
-| Dearest lots | 18-19 cr, all-rounders |
-| Filled after the last lot | 14 players at base |
-| Squads | every side 11, five to eight who bowl, strength 66-69 overall; a passer 58 |
+| AI spend | 45-65 of 100 cr a side |
+| Dearest lots | 7.5-9.5 cr |
+| Filled after the last lot | 11 players at base |
+| Squads | every side 11, five to eight who bowl, strength 66-70 overall; a passer 54 |
+| A bidder who goes to 1.35x worth | strength 76 against the room's 64-68, spending 83 |
+| The same bidder stopping at 1.1x | strength 62.5, spending 44: loses every contested lot |
 
 ## Files that matter
 
@@ -863,13 +865,15 @@ three in the two below, because a tail-ender who bowls well *is* a good
 player, and the authored squads have almost no weak non-bowlers. Tiers are
 now shares of the pool by rank, and survive any re-authoring of the squads.
 
-**44. Letting the AI bid to its worth.** With ceilings of worth x need alone,
-every side blew its purse in the marquee set and the tail of the auction was
-filled at base. The cap of three times a side's fair share (purse over slots
-left) keeps them in the room longer; they still spend out, because the pool
-is worth less than the purses, which is a property of the numbers and not a
-bug. If it ever needs changing, the lever is `worth` or `PURSE`, not the
-bidding.
+**44. An auction the player could not afford.** The first `worth` peaked
+near 20 cr and two need multipliers stacked on it, so marquee lots went for
+16-19 of a 100 cr purse, every AI side spent out, and a player who bid was
+dragged past what an eleven could bear. "Each player is too expensive" was
+the report. Halving `worth` (peak 11), taking the larger need multiplier
+instead of the product, tightening the noise to 0.85-1.15 and capping a bid
+at 2.5x a side's fair share put marquee lots at 7.5-9.5 and AI spend at
+45-65. The measure that matters is not what the AI pay but **what a
+sensible bidder ends up with**, which the auction test now prints.
 
 ## Next steps
 
@@ -886,7 +890,8 @@ trap 41).
 
 **Small things the auction makes visible**, in the order a player notices:
 
-- A hint on the pool screen that the AI will spend out by the Core set.
+- A line on the lot that says what the room thinks he is worth, or a hint
+  that you must outbid the keenest side rather than the field.
 - Retained players, or a smaller purse, if the mega auction feels too long.
   Skip-to-star and pass-on-the-rest are the current answers.
 - Letting the player reorder the batting order after the auction. It is set

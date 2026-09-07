@@ -57,7 +57,7 @@ export function overall(p: PoolPlayer): number {
 
 export function worth(p: PoolPlayer): number {
   const o = Math.max(0, Math.min(100, overall(p))) / 100;
-  return MIN_BASE + 20 * Math.pow(o, 2.4);
+  return MIN_BASE + 11 * Math.pow(o, 2.4);
 }
 
 export interface Tier {
@@ -78,7 +78,7 @@ export const tierOf = (p: PoolPlayer): Tier => TIERS.find((t) => t.name === p.ti
 
 export const baseOf = (p: PoolPlayer) => p.base;
 
-export const SHARE_CAP = 3;
+export const SHARE_CAP = 2.5;
 
 export function roleOf(p: PoolPlayer): "bat" | "bowl" | "all-rounder" {
   if (!p.bowler) return "bat";
@@ -167,14 +167,14 @@ export function need(a: Auction, squad: string, player: PoolPlayer): number {
 
   let n = 1;
   if (player.bowler) {
-    if (bowlersShort > 0) n *= 1.25;
-    else if (bowlers >= 7) n *= 0.5;
+    if (bowlersShort > 0) n = 1.15;
+    else if (bowlers >= 7) n = 0.5;
   }
   const bat = battingValue(player.batter);
   const tops = mine.filter((p) => battingValue(p.batter) >= 60).length;
   if (bat >= 60) {
-    if (tops < 4) n *= 1.2;
-    else if (tops >= 6) n *= 0.7;
+    if (tops < 4) n = Math.max(n, 1.15);
+    else if (tops >= 6) n = Math.min(n, 0.7);
   }
   return n;
 }
@@ -185,7 +185,7 @@ export function ceiling(a: Auction, squad: string, player: PoolPlayer, lot = a.l
   const slotsLeft = SQUAD_SIZE - owned(a, squad).length;
   const affordable = a.purse[squad] - (slotsLeft - 1) * MIN_BASE;
   const share = (a.purse[squad] / slotsLeft) * SHARE_CAP;
-  const noise = makeRng(`${a.seed}:${lot}:${squad}`).range(0.85, 1.25);
+  const noise = makeRng(`${a.seed}:${lot}:${squad}`).range(0.85, 1.15);
   return Math.max(0, Math.min(worth(player) * n * noise, affordable, share));
 }
 

@@ -135,9 +135,32 @@ describe("a whole auction", () => {
       console.log(`${done.filled.length} players filled after the last lot`);
     }
     const spends = rows.filter((r) => r.side !== "mum").map((r) => Number(r.spent));
-    expect(Math.min(...spends)).toBeGreaterThan(60);
+    expect(Math.min(...spends)).toBeGreaterThan(35);
+    expect(Math.max(...spends)).toBeLessThan(80);
     expect(dear[0].price).toBeGreaterThan(5);
+    expect(dear[0].price).toBeLessThan(14);
     expect(done.filled.length).toBeLessThan(25);
+  });
+
+  it("a sensible bidder builds a side as strong as the room's", () => {
+    let a = fresh("sensible");
+    for (let guard = 0; guard < 2000 && a.stage === "bidding"; guard++) {
+      const lot = currentLot(a)!;
+      const mine = owned(a, "mum");
+      const slots = SQUAD_SIZE - mine.length;
+      const bowlers = mine.filter((p) => p.bowler).length;
+      const wants = slots > 0 && (lot.bowler || slots > MIN_BOWLERS - bowlers);
+      if (wants && youCanBid(a).ok && nextPrice(a) <= worth(lot) * 1.35) a = bid(a);
+      else a = pass(a);
+    }
+    valid(a);
+    const strength = (id: string) => owned(a, id).reduce((s, p) => s + overall(p), 0) / SQUAD_SIZE;
+    const others = a.squads.filter((id) => id !== "mum").map(strength);
+    const rows = a.squads.map((id) => ({ side: id, spent: (PURSE - a.purse[id]).toFixed(2), strength: strength(id).toFixed(1), bought: owned(a, id).filter((p) => !a.filled.includes(p.id)).length }));
+    if (measure) console.table(rows);
+    expect(strength("mum")).toBeGreaterThan(Math.max(...others));
+    expect(PURSE - a.purse.mum).toBeGreaterThan(60);
+    expect(PURSE - a.purse.mum).toBeLessThan(PURSE);
   });
 
   it("is deterministic on the seed", () => {
