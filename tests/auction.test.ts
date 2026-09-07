@@ -5,13 +5,14 @@ import {
   owned, pass, passAll, poolFrom, rosters, skipToStar, star, tierOf, toSquad, worth, youCanBid,
 } from "../src/sim/auction";
 import type { Auction, PoolPlayer } from "../src/sim/auction";
-import { FRANCHISES, franchiseById } from "../src/data/franchises";
+import { FRANCHISES, LEGENDS, franchiseById } from "../src/data/franchises";
 import { createSeason, nextFixture, recordResult, simulateFixture, standings } from "../src/sim/tournament";
 import { makeRng } from "../src/sim/rng";
 import { simulateMatch } from "../src/sim/match";
 
 const IDS = FRANCHISES.map((f) => f.id);
-const POOL = poolFrom(FRANCHISES);
+const POOL = poolFrom([...FRANCHISES, LEGENDS]);
+const SLOTS = FRANCHISES.length * SQUAD_SIZE;
 const measure = process.env.MEASURE === "1";
 
 const fresh = (seed = "auction-test") => open(createAuction(POOL, IDS, "mum", seed));
@@ -19,13 +20,14 @@ const fresh = (seed = "auction-test") => open(createAuction(POOL, IDS, "mum", se
 const valid = (a: Auction) => {
   for (const id of a.squads) expect(owned(a, id)).toHaveLength(SQUAD_SIZE);
   for (const id of a.squads) expect(a.purse[id]).toBeGreaterThanOrEqual(0);
-  expect(Object.keys(a.sold)).toHaveLength(POOL.length);
+  expect(Object.keys(a.sold)).toHaveLength(SLOTS);
 };
 
 describe("the pool", () => {
-  it("holds every authored player once, and lots run marquee first", () => {
-    expect(POOL).toHaveLength(110);
-    expect(new Set(POOL.map((p) => p.id)).size).toBe(110);
+  it("holds every authored player and every legend once, and lots run marquee first", () => {
+    expect(POOL).toHaveLength(SLOTS + LEGENDS.squad.batters.length);
+    expect(new Set(POOL.map((p) => p.id)).size).toBe(POOL.length);
+    expect(POOL.filter((p) => p.from === "leg").length).toBe(LEGENDS.squad.batters.length);
     const a = fresh();
     const tiers = a.pool.map((p) => TIERS.indexOf(tierOf(p)));
     for (let i = 1; i < tiers.length; i++) expect(tiers[i]).toBeGreaterThanOrEqual(tiers[i - 1]);

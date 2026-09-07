@@ -9,7 +9,7 @@ a trophy. Every innings of yours you bat with a bat in your hand, on a nine-man
 field drawn through a perspective camera of a floodlit stadium, against the
 opposition's real attack. The model bats theirs, ball by ball, and you watch it
 on a broadcast scorecard. Or skip the season and play a quick match. Or run
-one franchise's purse through an auction first: 110 players, nine AI sides
+one franchise's purse through an auction first: 126 players including sixteen retired legends, nine AI sides
 bidding against you, and the season played with the eleven you bought.
 
 The reference is Bennett Foddy's
@@ -107,7 +107,7 @@ under `src/game/hud/`, on the design system in
 | Path | |
 | --- | --- |
 | `src/sim/` | Pure. The ball-by-ball model, the season, the `Outcome` seam, the bridge |
-| `src/data/franchises.ts` | The ten franchises and their elevens |
+| `src/data/franchises.ts` | The ten franchises, their IPL 2026 elevens, and the legends pool |
 | `src/game/config.ts` | Every scale decision and every Matter body, in one place |
 | `src/game/physics/` | The bat, the swing controller, the direction model, the field and the judge |
 | `src/game/view/camera.ts` | Pure. The pinhole camera the ground is drawn through, and the full-bleed viewport scaling |
@@ -128,7 +128,8 @@ design decision on how the two paths value a ball (they are measured, and
 close, and not identical), sound, touch input, deployment, season history.
 `HANDOFF.md` has the ordered list.
 
-Teams are fictional throughout. Players carry the real first names of their
-IPL counterparts with changed surnames, so the elevens read as familiar
+Teams are fictional throughout. Each eleven mirrors that franchise's IPL 2026
+side, and the auction adds sixteen retired legends; every player carries a
+real first name with a changed surname, so the elevens read as familiar
 without using a licensed full name or likeness. Neither the franchise names
 nor the player names have been cleared against a trademark register.

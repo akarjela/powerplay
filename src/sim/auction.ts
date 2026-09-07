@@ -116,7 +116,7 @@ export function poolFrom(sides: readonly { id: string; squad: Squad }[]): PoolPl
 
 export function createAuction(pool: PoolPlayer[], squads: string[], you: string, seed: string): Auction {
   if (!squads.includes(you)) throw new Error(`"${you}" is not in the auction`);
-  if (pool.length !== squads.length * SQUAD_SIZE) {
+  if (pool.length < squads.length * SQUAD_SIZE) {
     throw new Error(`a pool of ${pool.length} cannot fill ${squads.length} sides of ${SQUAD_SIZE}`);
   }
   const rng = makeRng(`${seed}:lots`);
@@ -211,7 +211,8 @@ function sell(a: Auction, player: PoolPlayer, sale: Sale | null): Auction {
     purse[sale.to] = round2(purse[sale.to] - sale.price);
   }
   const next: Auction = { ...a, sold, purse, lot: a.lot + 1, price: null, holder: null, last: { player: player.id, sale } };
-  return next.lot >= next.pool.length ? finish(next) : next;
+  const everyoneFull = next.squads.every((id) => owned(next, id).length >= SQUAD_SIZE);
+  return next.lot >= next.pool.length || everyoneFull ? finish(next) : next;
 }
 
 export function bid(a: Auction): Auction {

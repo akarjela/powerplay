@@ -112,8 +112,8 @@ describe("a season between the franchises", () => {
   it("lets the strong sides be strong: the batting-heavy side outscores the bowling-heavy one", () => {
     const scored = (id: string) =>
       mean(matches.flatMap((m) => [m.first, m.second]).filter((i) => i.squad.id === id).map((i) => i.runs));
-    if (measure) console.log(`BLR bat ${scored("blr").toFixed(1)}, HYD bat ${scored("hyd").toFixed(1)}`);
-    expect(scored("blr")).toBeGreaterThan(scored("hyd"));
+    if (measure) console.log("bat:", LEAGUE.map((s) => `${s.id} ${scored(s.id).toFixed(1)}`).join("  "));
+    expect(scored("hyd")).toBeGreaterThan(scored("che"));
   });
 
   it("finishes every innings inside twenty overs", () => {

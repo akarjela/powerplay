@@ -114,8 +114,10 @@ Read this first; everything below is the detail behind it.
   average batter (0.70 for the worst, 1.10 for the best). Effort for soft
   hands and the bridge is read against the batter's own cap, so a number
   eleven's full swing still counts as an attack. Measured below.
-- **The auction.** `src/sim/auction.ts`: all 110 authored players in one
-  pool, tiers by rank (marquee first), a 100 cr purse a side, bid or pass
+- **The auction.** `src/sim/auction.ts`: all 110 authored players plus the
+  16 legends of `LEGENDS` (id `leg`, a badge of its own, never in a season)
+  in one pool of 126, tiers by rank (marquee first), the auction closing the
+  moment every side is full so the leftover lots go unsold, a 100 cr purse a side, bid or pass
   against nine AI sides whose ceilings come from worth, need and a seeded
   noise, unsold players filled at base, part-timers made where an eleven is
   short of bowlers. `Season.rosters` carries the elevens; `franchiseIn()`
@@ -167,7 +169,7 @@ Four decisions were settled up front and should not be relitigated:
 | --- | --- |
 | You control | **Batting only.** Your bowling innings resolves from stats as a live scorecard. |
 | Stack | **TypeScript + Phaser 4 + Vite.** Browser game, deployable. |
-| Naming | **Fictional franchises**, real Indian cities. Players carry the real first names of their IPL counterparts with changed surnames (Virat Singh, not Virat Kohli), chosen 2026-09-07 for recognisability. Real IPL franchise names and full player names are licensed; this is meant to be publishable. |
+| Naming | **Fictional franchises**, real Indian cities (Pune became Mohali on 2026-09-07 so the ten mirror IPL 2026). Each eleven is that franchise's IPL 2026 side, real first names with changed surnames (Virat Singh, not Virat Kohli), and the auction adds 16 retired legends the same way (AB de Klerk, Chris Gaynor). Real IPL franchise names and full player names are licensed; this is meant to be publishable. |
 | Sim depth | **Stats-driven ball-by-ball**, not a single overall rating. |
 
 ### The architectural commitment
@@ -303,8 +305,8 @@ Three seasons of the ten authored squads, `tests/franchises.test.ts`.
 
 | | |
 | --- | --- |
-| First-innings total / wickets / strike rate | 164.6 / 6.5 / 141 — inside the calibration bands |
-| Win share, best to worst | Chennai 67%, Bengaluru 56%, Hyderabad 52%, Lucknow 52%, Mumbai 48%, Pune 48%, Delhi 44%, Kolkata 44%, Jaipur 44%, Ahmedabad 33% |
+| First-innings total / wickets / strike rate | 166.4 / 7.0 / 143 — inside the calibration bands (2026 elevens) |
+| Win share, best to worst | Delhi 59%, Kolkata 56%, Bengaluru 56%, Mohali 56%, Jaipur 52%, Hyderabad 48%, Mumbai 44%, Lucknow 44%, Ahmedabad 41%, Chennai 33% (2026 elevens) |
 | Bengaluru bat / Hyderabad bat | 167 / 146 a match — the batting side outscores the bowling side, as authored |
 
 27 games a side is a standard error near ten points, so the middle of that
@@ -335,7 +337,7 @@ than at 92. The bands in the test sit under these numbers.
 
 | | |
 | --- | --- |
-| Pool | 110 players worth 492 cr in total, against 1000 cr of purses |
+| Pool | 126 players (110 plus 16 legends) worth 646 cr in total, against 1000 cr of purses; 11 filled after the last lot |
 | Tiers by rank | Marquee 17, Frontline 28, Core 33, Squad 22, Reserve 10 |
 | AI spend | 45-65 of 100 cr a side |
 | Dearest lots | 7.5-9.5 cr |
@@ -426,7 +428,7 @@ compromises live in one file, and now every Matter body too.
 
 **Data**
 
-- `src/data/franchises.ts` — the ten franchises: id, code, city, name,
+- `src/data/franchises.ts` — the ten franchises (IPL 2026 elevens) and `LEGENDS`: id, code, city, name,
   ground, colours, and an authored eleven each. `LEAGUE` is the squads alone
 
 **The camera**

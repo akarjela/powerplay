@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { FRANCHISES, LEAGUE } from "../../data/franchises";
+import { FRANCHISES, LEAGUE, LEGENDS } from "../../data/franchises";
 import { createAuction, poolFrom } from "../../sim/auction";
 import { createSeason } from "../../sim/tournament";
 import { clearAuction, clearSeason, loadAuction, loadSeason, saveAuction, saveSeason } from "../season/store";
@@ -27,7 +27,7 @@ export class SelectScene extends Phaser.Scene {
       onAbandonSeason: () => clearSeason(),
       savedAuction: () => loadAuction(),
       onNewAuction: (you) => {
-        saveAuction(createAuction(poolFrom(FRANCHISES), ids, you.id, `auction-${Date.now()}`));
+        saveAuction(createAuction(poolFrom([...FRANCHISES, LEGENDS]), ids, you.id, `auction-${Date.now()}`));
         this.scene.start("auction");
       },
       onContinueAuction: () => this.scene.start("auction"),
