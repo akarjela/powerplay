@@ -141,7 +141,7 @@ Ordered by how much a player would notice.
 3. **Fielders do not move on screen**, and deep point and third man are
    behind the camera, on the radar only.
 4. **No sound, no touch, no deploy, no season history.** M5.
-5. **Franchise names are not trademark-cleared.** Before anything ships.
+5. **Franchise names are not trademark-cleared, and the player names now borrow real first names.** Before anything ships, check both.
 
 ### What is next
 
@@ -167,7 +167,7 @@ Four decisions were settled up front and should not be relitigated:
 | --- | --- |
 | You control | **Batting only.** Your bowling innings resolves from stats as a live scorecard. |
 | Stack | **TypeScript + Phaser 4 + Vite.** Browser game, deployable. |
-| Naming | **Fictional franchises**, real Indian cities. Real IPL names and player likenesses are licensed; this is meant to be publishable. |
+| Naming | **Fictional franchises**, real Indian cities. Players carry the real first names of their IPL counterparts with changed surnames (Virat Singh, not Virat Kohli), chosen 2026-09-07 for recognisability. Real IPL franchise names and full player names are licensed; this is meant to be publishable. |
 | Sim depth | **Stats-driven ball-by-ball**, not a single overall rating. |
 
 ### The architectural commitment
@@ -952,7 +952,7 @@ trap 41).
   player can retry a match by reloading. Decide whether that is a feature.
 - **The crowd is a texture.** It cannot react. A second baked texture with
   arms up, swapped in on a six, is the cheap version of a reacting crowd.
-- **Franchise names are not trademark-cleared.**
+- **Franchise names are not trademark-cleared.** Player first names are real IPL first names with changed surnames, on purpose; a real player of that name may exist.
 - **Everything is a right-hander.**
 - **The sim has no direction**, so the radar shows only your innings.
 - **Running between the wickets is not simulated.**

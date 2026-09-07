@@ -128,6 +128,7 @@ design decision on how the two paths value a ball (they are measured, and
 close, and not identical), sound, touch input, deployment, season history.
 `HANDOFF.md` has the ordered list.
 
-Teams and players are fictional throughout. Real IPL franchise names and
-player likenesses are licensed, and this is meant to be publishable; the
-fictional names have not yet been cleared against a trademark register.
+Teams are fictional throughout. Players carry the real first names of their
+IPL counterparts with changed surnames, so the elevens read as familiar
+without using a licensed full name or likeness. Neither the franchise names
+nor the player names have been cleared against a trademark register.
