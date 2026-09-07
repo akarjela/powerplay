@@ -1,7 +1,9 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-06. Everything below M5 is complete and the tree is
-clean. **New this session:** technique now sets the speed of the bat (a
+_Last updated: 2026-09-07. Everything below M5 is complete and the tree is
+clean. The auction's prices were retuned the same evening after a
+playtest ("each player is too expensive"): see trap 44 and the measured
+auction table. **New this session:** technique now sets the speed of the bat (a
 tail-ender's bat lags the pointer more and scores less, measured), and an
 **auction mode** -- a third tab where you run one franchise's purse through an
 IPL-style mega auction against nine AI sides, then play the season with the
