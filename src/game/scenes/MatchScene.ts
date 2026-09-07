@@ -38,7 +38,7 @@ import { makeRng } from "../../sim/rng";
 import type { Rng } from "../../sim/rng";
 import type { Batter, Bowler } from "../../sim/player";
 import { unit } from "../../sim/player";
-import { FRANCHISES, franchiseById } from "../../data/franchises";
+import { FRANCHISES, franchiseById, franchiseIn } from "../../data/franchises";
 import type { Franchise } from "../../data/franchises";
 import { loadSeason, saveSeason } from "../season/store";
 import { cardOf, fixtureById, playedFrom, recordResult } from "../../sim/tournament";
@@ -60,11 +60,11 @@ export interface MatchStart {
   fixtureId?: string;
 }
 
-function pickSides(data?: MatchStart): { you: Franchise; them: Franchise } {
+function pickSides(data?: MatchStart, season?: Season): { you: Franchise; them: Franchise } {
   const params = new URLSearchParams(window.location.search);
   const lookup = (id: string | null | undefined, fallback: Franchise) => {
     try {
-      return id ? franchiseById(id) : fallback;
+      return id ? franchiseIn(season, id) : fallback;
     } catch {
       return fallback;
     }
@@ -147,7 +147,6 @@ export class MatchScene extends Phaser.Scene {
   }
 
   init(data?: MatchStart): void {
-    this.sides = pickSides(data);
     this.season = undefined;
     this.fixture = undefined;
     if (data?.fixtureId) {
@@ -157,6 +156,7 @@ export class MatchScene extends Phaser.Scene {
         this.fixture = fixtureById(season, data.fixtureId);
       }
     }
+    this.sides = pickSides(data, this.season);
 
     this.rng = makeRng(this.fixture && this.season ? `${this.season.seed}:${this.fixture.id}` : `quick-${Date.now()}`);
     this.innings = new HumanInnings(this.sides.you.squad);

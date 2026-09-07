@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 
 import { GRAVITY_Y, PHYSICS_FPS } from "./game/config";
+import { AuctionScene } from "./game/scenes/AuctionScene";
 import { MatchScene } from "./game/scenes/MatchScene";
 import { SelectScene } from "./game/scenes/SelectScene";
 import { SeasonScene } from "./game/scenes/SeasonScene";
@@ -22,7 +23,7 @@ const game = new Phaser.Game({
     },
   },
   scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
-  scene: [SelectScene, SeasonScene, MatchScene],
+  scene: [SelectScene, SeasonScene, AuctionScene, MatchScene],
 });
 
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__game = game;

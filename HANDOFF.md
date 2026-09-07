@@ -1,18 +1,14 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-03, late. M1, M2, **track 2, track 3, M3 and M4 all
-complete** -- the bridge is built and measured. There is a real match
-now -- a toss, a target if you are put in, the model chasing you if you are
-not -- and a **season**: a round robin of ten, a points table with net run
-rate, the IPL bracket, a champion, saved in localStorage. The ground is a
-perspective camera's view of a stadium with a crowd of people in it, and the
-players have faces. A headless harness plays the actual Matter world in Node,
-which is how the physics was measured. **New this session:** a UI pass -- the
-canvas is full-bleed, the HUD is a broadcast lower third in the DOM, fours,
-sixes, wickets and fifties are full-screen moments, and the crowd moves --
-and then the three items at the top of the list: the bridge, power at the
-crease, and their innings watched ball by ball. Nothing is mid-edit; the
-tree is clean and every test passes._
+_Last updated: 2026-09-06. Everything below M5 is complete and the tree is
+clean. **New this session:** technique now sets the speed of the bat (a
+tail-ender's bat lags the pointer more and scores less, measured), and an
+**auction mode** -- a third tab where you run one franchise's purse through an
+IPL-style mega auction against nine AI sides, then play the season with the
+eleven you bought. The auction is a pure, seeded, JSON-serialisable module
+with its own tests; the season carries the rosters and every scene reads
+squads through one accessor. Both were checked in the browser. Nothing is
+mid-edit; every test passes._
 
 **The source carries no comments**, by request, as of the cleanup on
 2026-09-03. Everything the comments used to say -- why a constant is what it
@@ -111,6 +107,19 @@ Read this first; everything below is the detail behind it.
   by band, the table marks the top four and your row, the fixture panel
   has Play / Simulate instead / Sim to my next match.
 
+- **Technique as the speed of the bat.** `batSpeedFactor` in swing.ts scales
+  the swing's cap and response by the striker's technique, centred on the
+  average batter (0.70 for the worst, 1.10 for the best). Effort for soft
+  hands and the bridge is read against the batter's own cap, so a number
+  eleven's full swing still counts as an attack. Measured below.
+- **The auction.** `src/sim/auction.ts`: all 110 authored players in one
+  pool, tiers by rank (marquee first), a 100 cr purse a side, bid or pass
+  against nine AI sides whose ceilings come from worth, need and a seeded
+  noise, unsold players filled at base, part-timers made where an eleven is
+  short of bowlers. `Season.rosters` carries the elevens; `franchiseIn()`
+  overlays them on a franchise shell. A DOM screen on the design system, an
+  `AuctionScene`, a third tab, an in-progress save under its own key.
+
 ### What is left
 
 Ordered by how much a player would notice.
@@ -200,11 +209,11 @@ attack costs; see *What is left*.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 165 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge and 3 on power through the same harness, 12 on the camera, 12 on the season |
+| Tests | 187 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge, 6 on power and technique through the same harness, 16 on the auction, 12 on the camera, 12 on the season |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
-| Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match or season. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
-| Source | ~5,950 lines across 31 files in `src/` (plus ~430 of CSS); ~2,150 across 13 in `tests/` |
-| Persistence | One season, as JSON under `powerplay.season.v1` in localStorage |
+| Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match, season or auction. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
+| Source | ~6,368 lines across 39 files in `src/` (plus ~779 of CSS); ~2,493 across 16 in `tests/` |
+| Persistence | One season under `powerplay.season.v1` and one auction in progress under `powerplay.auction.v1`, both JSON in localStorage |
 | Node | 20.20.2 locally |
 
 Stack versions, all current as of writing: Phaser 4.2.1, Vite 8.2.2,
@@ -304,6 +313,33 @@ pass (22%); it took two nudges to their top order to make them competitive.
 That is a property of the sim, not the squads, and it is worth knowing before
 M4 hands out a trophy.
 
+### Measured attributes at the crease
+
+`tests/attributes.test.ts`, 500 balls each from the random player against
+the same seamer. Power scales the ball's speed off the bat; technique scales
+the bat's speed toward the pointer.
+
+| | contact | boundaries | runs a ball | wickets |
+| --- | --- | --- | --- | --- |
+| power 92 / 12 | 87.7% / 87.7% | 19.8% / 15.4% | 1.44 / 1.22 | 7.2% / 8.0% |
+| technique 92 / 12 | 87.5% / 90.6% | 21.3% / 15.2% | 1.54 / 1.30 | 9.4% / 7.8% |
+
+A swing from rest to 90° takes at least three frames longer at technique 12
+than at 92. The bands in the test sit under these numbers.
+
+### Measured auction
+
+`MEASURE=1 npm test` prints it. Seed `auction-test`, you passing every lot.
+
+| | |
+| --- | --- |
+| Pool | 110 players worth 876 cr in total, against 1000 cr of purses |
+| Tiers by rank | Marquee 17, Frontline 28, Core 33, Squad 22, Reserve 10 |
+| AI spend | 99.9-100 of 100 cr, every side |
+| Dearest lots | 18-19 cr, all-rounders |
+| Filled after the last lot | 14 players at base |
+| Squads | every side 11, five to eight who bowl, strength 66-69 overall; a passer 58 |
+
 ## Files that matter
 
 Nothing is mid-edit. In dependency order:
@@ -356,6 +392,24 @@ compromises live in one file, and now every Matter body too.
   overs-bowled function rather than the figures map, so the scene rotates
   the attack you face by the same rule
 
+**The auction**
+
+- `src/sim/auction.ts` -- pure and serialisable. `poolFrom` (tiers by rank
+  in the pool), `createAuction`, `bid`, `pass`, `skipToStar`, `passAll`,
+  `finish` (unsold filled at base, bowlers first), `toSquad` (batting order
+  by batting value, part-timers where fewer than five bowl), `rosters`.
+  `ceiling` is worth x need x seeded noise, capped by what the side can
+  spend and still fill its slots and by three times its fair share
+- `src/game/hud/screens/auctionScreen.ts` -- the pool for starring, the lot,
+  coming up with skip and pass-on-the-rest, your squad, the room's purses,
+  the finished eleven. Owns the state transitions; the scene only saves
+- `src/game/scenes/AuctionScene.ts` -- mounts it; Start season builds the
+  season with `rosters` and clears the auction save
+- `src/game/hud/screens/squadPanel.ts` -- the rating-bar squad panel shared
+  by the team, season and auction screens
+- `src/data/franchises.ts` -- `franchiseIn(season, id)` returns the shell
+  with its auction roster if the season has one
+
 **The season**
 
 - `src/sim/tournament.ts` — pure and serialisable. `createSeason` (circle
@@ -363,7 +417,8 @@ compromises live in one file, and now every Matter body too.
   `playoffs` (Q1, Eliminator, Q2, Final appearing as their inputs exist),
   `nextFixture`, `simulateFixture`, `playedFrom` for a match you batted in.
   A tied playoff goes to the higher-placed side; there is no super over
-- `src/game/season/store.ts` — load/save/clear the one saved season
+- `src/game/season/store.ts` — load/save/clear the one saved season and the
+  one auction in progress
 
 **Data**
 
@@ -435,6 +490,12 @@ assembles a model each ball; nothing here knows the game.
 - `tests/physics.test.ts` — 9 tests over the real physics path: the pitch
   ladder, contact rate, direction split, early-to-leg, catch rate, run spread,
   bowled rate, extras, pacing. `MEASURE=1` prints the tables
+- `tests/attributes.test.ts` -- 6 tests: power and technique centred on the
+  average batter, the two A/Bs above, frames to reach the pointer
+- `tests/auction.test.ts` -- 16 tests: the pool and its order, base tiers,
+  a lot passed and a lot bid on, a whole auction passed through, a whole
+  auction bought through a watchlist, part-timers, a half-done auction
+  finished, a season played on the rosters
 - `tests/tournament.test.ts` — 12 tests: the fixture list (45, nine each,
   five a round, home games balanced), the table (points, ties, NRR with the
   bowled-out rule), the bracket to a champion, tied playoffs, replay
@@ -796,36 +857,41 @@ of the pitch at 9 degrees and 7% contrast read as a sunburst, not grass.
 Starting them 13m out, at 5 degrees and 4%, they are a mown outfield.
 Nothing was wrong with the idea; the contrast was.
 
+**43. Fixed thresholds for the auction's tiers.** Overall 74 and up was
+marquee, 64 frontline, and so on. The pool put 57 of 110 in one tier and
+three in the two below, because a tail-ender who bowls well *is* a good
+player, and the authored squads have almost no weak non-bowlers. Tiers are
+now shares of the pool by rank, and survive any re-authoring of the squads.
+
+**44. Letting the AI bid to its worth.** With ceilings of worth x need alone,
+every side blew its purse in the marquee set and the tail of the auction was
+filled at base. The cap of three times a side's fair share (purse over slots
+left) keeps them in the room longer; they still spend out, because the pool
+is worth less than the purses, which is a property of the numbers and not a
+bug. If it ever needs changing, the lever is `worth` or `PURSE`, not the
+bidding.
+
 ## Next steps
 
-**Phase 4 of track 2 — the bridge, still.** A human's shot does not flow
-back through the model. `Outcome.shot` is undefined on the physics path, so
-the scorecard can explain an AI dismissal and not yours. It matters more
-now that a season table sits on top of both paths: a human innings and a
-simulated one should value a ball the same way, and nobody has measured
-whether they do. `tests/headless.ts` makes the comparison cheap. See the
-previous version of this section for the two steps; they have not changed.
+**Decide the two-path gap** (see *What is left*). The auction makes it more
+visible, not less: a bought eleven plays half its games through the physics
+and half through the model, and the table adds both.
 
-**Things the season now makes visible**, in the order a player will notice:
+**Then M5** -- sound, mobile touch, deploy, season history, and the feel
+layer: frame hold on middled contact, slow-motion over the rope, a crowd
+that reacts with a second baked texture, distinct audio for edge, middle and
+miss. Fielders who visibly move (which needs the judge to watch them, trap
+42). Left-handers (a batter drawn the other way and a camera that follows,
+trap 41).
 
-- **Your batters' attributes do nothing.** The bat is the same bat for
-  Malhotra and for the number eleven. Power could scale `contactDamping`'s
-  ceiling; technique could widen the hitting zone by a few pixels. Small,
-  legible, and it would make the batting order mean something.
-- **You never bowl.** Their innings is a card. A live scorecard of the
-  simulated innings -- ball by ball, skippable -- would make it a match you
-  watched rather than a number you were told.
-- **No season history.** One season, overwritten. A list of past champions
-  is a few lines in the store.
-- **Batting moves results more than bowling** (see the franchise
-  measurements). A season table will show it. If the bowling sides never
-  make the playoffs, the lever is `movement`'s weight in `delivery.ts`.
+**Small things the auction makes visible**, in the order a player notices:
 
-**Then M5** — sound, mobile touch, deploy, and the feel layer: frame hold on
-middled contact, slow-motion over the rope, a crowd that reacts (the crowd is
-a texture now; a second texture of raised arms swapped in for a moment would
-do), distinct audio for edge, middle and miss. Fielders who visibly move.
-Left-handers. A keeper.
+- A hint on the pool screen that the AI will spend out by the Core set.
+- Retained players, or a smaller purse, if the mega auction feels too long.
+  Skip-to-star and pass-on-the-rest are the current answers.
+- Letting the player reorder the batting order after the auction. It is set
+  by batting value, which puts bowlers at the tail, and is usually right.
+- The season screen's *Your eleven* panel is read-only.
 
 ## Known rough edges
 
@@ -885,6 +951,15 @@ Left-handers. A keeper.
 - **Running between the wickets is not simulated.**
 - **Ties happen in roughly 1–6% of matches.** A point each in the league.
 - **`tests/squads.ts` is a test fixture, not data.**
+- **An auction save and a season save are independent keys.** Starting the
+  season from a finished auction replaces the season in progress; the team
+  screen warns. Abandoning either is one click, without confirmation, the
+  same as before.
+- **The auction is a pure function of its state**, so a reload mid-auction
+  resumes at the same lot and the AI would bid the same way. Also means the
+  same seed gives the same lots.
+- **Part-timers have fixed, weak bowling ratings** (`PART_TIMER` in
+  auction.ts) and appear on the finished-eleven panel as such.
 - **Not pushed anywhere.** No git remote is configured.
 
 ## Running it
@@ -892,14 +967,16 @@ Left-handers. A keeper.
 ```bash
 npm install
 npm run dev              # http://localhost:5173  (?bat=pun&bowl=hyd to pick sides)
-npm test                 # 145 tests, no browser, ~2s
+npm test                 # 187 tests, no browser, ~4s
 MEASURE=1 npm test       # the same, printing every measured table
 npm run build
 ```
 
 Quick match: pick the side you bat for and the side you face. Season: pick
 your franchise and play nine league games and the playoffs; the others
-simulate. Click to face a delivery. Move the mouse to swing. Left/right (or
+simulate. Auction: pick a franchise shell, star the players you want, open
+the auction, bid or pass lot by lot (skip to your next star, or pass on the
+rest), then start the season with the eleven you bought. Click to face a delivery. Move the mouse to swing. Left/right (or
 A/D) for back and front foot. Esc leaves a match. The radar top right is
 where the shot went.
 

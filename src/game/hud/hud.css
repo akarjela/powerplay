@@ -719,3 +719,61 @@
   .panel.caps { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .screen { transition: none; } }
+
+.auction-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr); gap: clamp(10px, 1.4vw, 18px); align-items: start; }
+.screen-head .stat { display: flex; flex-direction: column; gap: 2px; padding: 0 clamp(10px, 1.4vw, 18px); border-left: 1px solid var(--line); }
+.screen-head .stat .fig { font-family: var(--display); font-size: var(--t-big); line-height: 0.95; }
+.screen-head .stat .unit { font-size: var(--t-label); color: var(--fg-mute); letter-spacing: 0.08em; text-transform: uppercase; }
+.money { font-family: var(--display); font-size: calc(var(--t-data) * 1.25); line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
+.set-head { margin: 12px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--line); color: var(--fg-dim); font-family: var(--display); font-size: calc(var(--t-data) * 1.15); letter-spacing: 0.08em; }
+.lot-row { display: grid; grid-template-columns: 64px 6px minmax(0, 1fr) auto auto 56px; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
+.lot-row:first-of-type, .set-head + .lot-row { border-top: 0; }
+.lot-row .flag { width: 6px; height: 16px; background: var(--flag-primary); }
+.lot-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.lot-row .code { color: var(--fg-dim); font-family: var(--display); font-size: calc(var(--t-data) * 1.05); }
+.lot-row .role { color: var(--fg-mute); font-size: var(--t-label); letter-spacing: 0.04em; white-space: nowrap; }
+.lot-row.is-starred .name { color: var(--milestone); }
+.screen .star { height: 24px; padding: 0 8px; font-size: var(--t-label); letter-spacing: 0.1em; text-transform: uppercase; background: var(--ink-2); color: var(--fg-dim); clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%, 0 4px); }
+.screen .star:hover { color: var(--fg); }
+.screen .star[aria-pressed="true"], .screen .actions .star.is-on { background: var(--milestone); color: #1a1200; }
+.lot .lot-who { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; margin: 8px 0 12px; }
+.lot .bug {
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  padding: 10px 14px; min-width: 96px;
+  background: linear-gradient(135deg, var(--flag-primary), color-mix(in srgb, var(--flag-primary) 65%, var(--ink-0)));
+  color: var(--on-team); border-left: 5px solid var(--flag-secondary);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+.lot .bug .code { font-family: var(--display); font-size: clamp(24px, 4vh, 34px); line-height: 0.95; }
+.lot .bug .name { font-size: var(--t-label); letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.9; }
+.lot .lot-name .big { font-size: clamp(30px, 5.6vh, 48px); margin: 0; }
+.lot-ratings { display: grid; gap: 8px; }
+.lot .price-row { display: flex; gap: 10px; margin-top: 12px; }
+.lot .price-cell { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; background: var(--ink-2); border-left: 3px solid var(--line); }
+.lot .price-cell.is-bid { border-left-color: var(--live); }
+.lot .price-cell .fig { font-family: var(--display); font-size: var(--t-score); line-height: 0.9; }
+.lot .holder { display: inline-flex; align-items: center; gap: 6px; font-family: var(--display); font-size: calc(var(--t-data) * 1.2); }
+.lot .holder .flag { width: 6px; height: 14px; background: var(--flag-primary); }
+.lot .holder.mute { color: var(--fg-mute); font-family: var(--data); font-size: var(--t-label); letter-spacing: 0.08em; text-transform: uppercase; }
+.screen .actions .primary:disabled { background: var(--ink-2); color: var(--fg-mute); box-shadow: none; cursor: default; }
+.screen .actions button:disabled { background: var(--ink-2); color: var(--fg-mute); cursor: default; }
+.lot .last { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--fg-dim); animation: last-in 220ms var(--ease); }
+.lot .last .word { font-family: var(--display); font-size: var(--t-big); line-height: 1; color: var(--fg); letter-spacing: 0.06em; }
+.lot .last.is-yours .word { color: var(--ahead); }
+.lot .last.is-unsold .word { color: var(--fg-mute); }
+@keyframes last-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.mine-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 56px; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
+.mine-row:first-of-type { border-top: 0; }
+.mine-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mine-row .role { color: var(--fg-mute); font-size: var(--t-label); letter-spacing: 0.04em; }
+.room .label { display: block; margin-bottom: 6px; }
+.room-row { display: grid; grid-template-columns: 6px 44px 40px minmax(0, 1fr) 56px; gap: 8px; align-items: center; padding: 4px 0; }
+.room-row .flag { width: 6px; height: 16px; background: var(--flag-primary); }
+.room-row .code { font-family: var(--display); font-size: calc(var(--t-data) * 1.15); }
+.room-row .n { color: var(--fg-dim); font-size: var(--t-label); }
+.room-row .purse { display: block; height: 8px; background: var(--ink-2); position: relative; }
+.room-row .purse::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--v); background: var(--flag-primary); }
+.room-row.is-you .code { color: var(--milestone); }
+.panel.pool { max-height: none; }
+@media (max-width: 1000px) { .auction-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .lot .last { animation: none; } }

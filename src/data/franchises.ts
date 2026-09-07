@@ -1,4 +1,5 @@
 import type { Batter, Bowler, Squad } from "../sim/player";
+import type { Season } from "../sim/tournament";
 
 export interface Franchise {
   id: string;
@@ -192,3 +193,9 @@ export function franchiseById(id: string): Franchise {
 }
 
 export const LEAGUE: readonly Squad[] = FRANCHISES.map((f) => f.squad);
+
+export function franchiseIn(season: Pick<Season, "rosters"> | null | undefined, id: string): Franchise {
+  const f = franchiseById(id);
+  const roster = season?.rosters?.[id];
+  return roster ? { ...f, squad: roster } : f;
+}

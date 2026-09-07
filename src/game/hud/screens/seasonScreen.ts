@@ -1,4 +1,4 @@
-import { franchiseById } from "../../../data/franchises";
+import { franchiseById, franchiseIn } from "../../../data/franchises";
 import type { Franchise } from "../../../data/franchises";
 import { oversOf } from "../../../sim/innings";
 import {
@@ -6,6 +6,7 @@ import {
 } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
 import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
+import { squadPanel } from "./squadPanel";
 
 export interface SeasonScreenHandlers {
   onPlay: (fixture: Fixture) => void;
@@ -54,6 +55,7 @@ export class SeasonScreen {
     const left = el("div", "season-col");
     const right = el("div", "season-col");
     left.append(this.table(season), this.capsPanel(season));
+    if (season.rosters) left.append(squadPanel(franchiseIn(season, season.you), "Your eleven, from the auction", true));
     right.append(this.fixturePanel(season), this.results(season));
     grid.append(left, right);
     this.body.append(grid);

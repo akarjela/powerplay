@@ -8,7 +8,9 @@ league games, a points table with net run rate, the playoff bracket, a final,
 a trophy. Every innings of yours you bat with a bat in your hand, on a nine-man
 field drawn through a perspective camera of a floodlit stadium, against the
 opposition's real attack. The model bats theirs, ball by ball, and you watch it
-on a broadcast scorecard. Or skip the season and play a quick match.
+on a broadcast scorecard. Or skip the season and play a quick match. Or run
+one franchise's purse through an auction first: 110 players, nine AI sides
+bidding against you, and the season played with the eleven you bought.
 
 The reference is Bennett Foddy's
 [Little Master Cricket](https://www.foddy.net/legacy/Cricket.html), which nails
@@ -23,11 +25,12 @@ you dribble it to mid-off. Time it and you clear the rope.
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm test        # 165 tests in ~4s, no browser
+npm test        # 187 tests in ~4s, no browser
 npm run build   # dist/
 ```
 
-- Pick a side and an opponent for a quick match, or a side for a season.
+- Pick a side and an opponent for a quick match, a side for a season, or a
+  side whose purse you run at the auction.
 - Win the toss and you choose: bat first, or bowl and chase.
 - Click **Next ball** (or the ground, or space) to face a delivery. Move the
   mouse to swing; the bat follows the pointer with a lag, and that lag is the

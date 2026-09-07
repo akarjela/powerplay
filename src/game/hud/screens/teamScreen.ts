@@ -1,11 +1,13 @@
 import { FRANCHISES } from "../../../data/franchises";
 import type { Franchise } from "../../../data/franchises";
-import type { Batter, Bowler } from "../../../sim/player";
 import { nextFixture, standings } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
 import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
+import { squadPanel } from "./squadPanel";
+import type { Auction } from "../../../sim/auction";
+import { SQUAD_SIZE, owned } from "../../../sim/auction";
 
-export type Mode = "quick" | "season";
+export type Mode = "quick" | "season" | "auction";
 
 export interface TeamScreenHandlers {
   savedSeason: () => Season | null;
@@ -13,6 +15,10 @@ export interface TeamScreenHandlers {
   onNewSeason: (you: Franchise) => void;
   onContinueSeason: () => void;
   onAbandonSeason: () => void;
+  savedAuction: () => Auction | null;
+  onNewAuction: (you: Franchise) => void;
+  onContinueAuction: () => void;
+  onAbandonAuction: () => void;
 }
 
 export class TeamScreen {
@@ -41,7 +47,7 @@ export class TeamScreen {
     mark.append(trophyMark("mark"), el("span", undefined, "Powerplay"));
     head.append(mark);
     const tabs = el("div", "tabs");
-    for (const [mode, label] of [["quick", "Quick match"], ["season", "Season"]] as const) {
+    for (const [mode, label] of [["quick", "Quick match"], ["season", "Season"], ["auction", "Auction"]] as const) {
       const b = el("button", "tab", label);
       b.type = "button";
       b.addEventListener("click", () => {
@@ -90,7 +96,7 @@ export class TeamScreen {
   }
 
   private pick(f: Franchise): void {
-    if (this.mode === "season") {
+    if (this.mode !== "quick") {
       this.batting = this.batting?.id === f.id ? undefined : f;
       this.bowling = undefined;
     } else if (this.batting?.id === f.id) {
@@ -109,6 +115,7 @@ export class TeamScreen {
   private go(): void {
     if (this.mode === "quick" && this.batting && this.bowling) this.handlers.onQuickMatch(this.batting, this.bowling);
     else if (this.mode === "season" && this.batting) this.handlers.onNewSeason(this.batting);
+    else if (this.mode === "auction" && this.batting) this.handlers.onNewAuction(this.batting);
   }
 
   private refresh(): void {
@@ -118,7 +125,9 @@ export class TeamScreen {
     for (const [mode, b] of this.tabs) b.classList.toggle("is-on", mode === this.mode);
     this.hint.textContent = this.mode === "quick"
       ? "Pick the side you bat for, then the side you face."
-      : "Pick the franchise you carry through the season.";
+      : this.mode === "season"
+        ? "Pick the franchise you carry through the season."
+        : "Pick the franchise whose purse you run. Every side rebuilds its eleven at the auction.";
 
     for (const f of FRANCHISES) {
       const { card, tag } = this.cards.get(f.id)!;
@@ -126,16 +135,17 @@ export class TeamScreen {
       const them = this.bowling?.id === f.id;
       card.classList.toggle("is-you", you);
       card.classList.toggle("is-them", them);
-      if (you) tag.textContent = this.mode === "season" ? "Your side" : "You bat";
+      if (you) tag.textContent = this.mode === "quick" ? "You bat" : "Your side";
       else tag.textContent = them ? "You face" : "";
     }
 
     this.panels.replaceChildren();
     if (this.mode === "season") this.seasonPanels();
+    else if (this.mode === "auction") this.auctionPanels();
     else this.quickPanels();
 
     const ready = this.mode === "quick" ? Boolean(this.batting && this.bowling) : Boolean(this.batting);
-    this.action.textContent = this.mode === "quick" ? "Play" : "Start season";
+    this.action.textContent = this.mode === "quick" ? "Play" : this.mode === "season" ? "Start season" : "Start auction";
     this.action.hidden = !ready;
   }
 
@@ -151,6 +161,52 @@ export class TeamScreen {
     if (saved) this.panels.append(this.savedPanel(saved));
     else if (!this.batting) this.panels.append(note("Nine league games, then the playoffs if you make the top four. Pick a side."));
     if (this.batting) this.panels.append(squadPanel(this.batting, "Your squad", true));
+  }
+
+  private auctionPanels(): void {
+    const saved = this.handlers.savedAuction();
+    if (saved) this.panels.append(this.savedAuctionPanel(saved));
+    else if (!this.batting) this.panels.append(note("A purse of 100 cr, 110 players, nine other sides bidding. Build an eleven, then play the season with it. Pick a side."));
+    if (this.batting) {
+      const panel = el("section", "panel squad");
+      teamTint(panel, this.batting.colours);
+      const head = el("div", "panel-head");
+      head.append(el("span", "label", "Your shell"), el("span", "who", this.batting.name));
+      panel.append(head, el("div", "line", `${this.batting.ground}. The name, the kit and the ground are yours; the players go back into the pool.`));
+      if (this.handlers.savedSeason()) panel.append(el("div", "line warn", "Starting the season after this auction replaces the season in progress."));
+      this.panels.append(panel);
+    }
+  }
+
+  private savedAuctionPanel(saved: Auction): HTMLElement {
+    const you = FRANCHISES.find((f) => f.id === saved.you)!;
+    const panel = el("section", "panel saved");
+    teamTint(panel, you.colours);
+    const mine = owned(saved, saved.you).length;
+    const line = saved.stage === "done"
+      ? "The auction is over. Your eleven is waiting."
+      : saved.stage === "watch"
+        ? "The pool is open for starring; no lot has been called."
+        : `Lot ${saved.lot + 1} of ${saved.pool.length}. ${mine} of ${SQUAD_SIZE} bought, ${saved.purse[saved.you].toFixed(2)} cr left.`;
+    panel.append(
+      el("span", "label", "Auction in progress"),
+      el("div", "big", you.name),
+      el("div", "line", line),
+    );
+    const go = el("button", "primary", "Continue");
+    go.type = "button";
+    go.addEventListener("click", () => this.handlers.onContinueAuction());
+    const drop = el("button", "danger", "Abandon");
+    drop.type = "button";
+    drop.addEventListener("click", () => {
+      this.handlers.onAbandonAuction();
+      this.refresh();
+    });
+    const row = el("div", "actions");
+    row.append(go, drop);
+    panel.append(row);
+    if (this.batting) panel.append(el("div", "line warn", `Starting a new auction as ${this.batting.name} replaces this one.`));
+    return panel;
   }
 
   private savedPanel(saved: Season): HTMLElement {
@@ -201,66 +257,4 @@ function whatIsNext(next: Fixture | null): string {
     case "eliminator": return "Next: the Eliminator.";
     case "final": return "Next: the Final.";
   }
-}
-
-function band(v: number): string {
-  if (v >= 75) return "elite";
-  if (v >= 55) return "good";
-  if (v >= 40) return "fair";
-  return "weak";
-}
-
-function bowlerRole(pace: number): string {
-  if (pace < 35) return "spin";
-  if (pace > 70) return "fast";
-  return "seam";
-}
-
-function squadPanel(f: Franchise, title: string, batting: boolean): HTMLElement {
-  const panel = el("section", "panel squad");
-  teamTint(panel, f.colours);
-  const head = el("div", "panel-head");
-  head.append(el("span", "label", title), el("span", "who", f.name));
-  panel.append(head);
-
-  const labels = batting ? ["Pow", "Tec", "Agg"] : ["Pace", "Acc", "Mov", "Var"];
-  const table = el("div", `ratings cols-${labels.length}`);
-  const header = el("div", "row head");
-  header.append(el("span", "name"), el("span", "role"));
-  for (const l of labels) header.append(el("span", "col", l));
-  table.append(header);
-
-  const rows: { name: string; values: number[]; role: string }[] = batting
-    ? f.squad.batters.map((b: Batter, i) => ({
-      name: `${i + 1}. ${b.name}`, values: [b.power, b.technique, b.aggression],
-      role: f.squad.bowlers.some((w) => w.id === b.id) ? "all-rounder" : "",
-    }))
-    : [
-      ...f.squad.bowlers.map((w: Bowler) => ({
-        name: w.name, values: [w.pace, w.accuracy, w.movement, w.variation],
-        role: bowlerRole(w.pace),
-      })),
-      ...f.squad.batters.filter((b) => !f.squad.bowlers.some((w) => w.id === b.id)).map((b) => ({
-        name: b.name, values: [], role: "bat",
-      })),
-    ];
-
-  for (const r of rows) {
-    const row = el("div", "row");
-    row.append(el("span", "name", r.name), el("span", "role", r.role));
-    for (let i = 0; i < labels.length; i++) {
-      const v = r.values[i];
-      const cell = el("span", "col");
-      if (v !== undefined) {
-        const bar = el("span", `bar ${band(v)}`);
-        bar.style.setProperty("--v", `${v}%`);
-        bar.title = String(v);
-        cell.append(bar);
-      }
-      row.append(cell);
-    }
-    table.append(row);
-  }
-  panel.append(table);
-  return panel;
 }

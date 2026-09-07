@@ -63,6 +63,8 @@ export interface Season {
   results: Played[];
 
   told?: Fate["kind"];
+
+  rosters?: Record<string, Squad>;
 }
 
 export interface Standing {

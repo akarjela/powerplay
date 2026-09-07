@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { franchiseById } from "../../data/franchises";
+import { franchiseById, franchiseIn } from "../../data/franchises";
 import { loadSeason, saveSeason, clearSeason } from "../season/store";
 import {
   fate, involvesYou, isOver, nextFixture, playoffs, recordResult, resultFor, simulateFixture,
@@ -87,7 +87,7 @@ export class SeasonScene extends Phaser.Scene {
     let season = this.season;
     for (const fixture of fixtures) {
       const rng = makeRng(`${season.seed}:${fixture.id}`);
-      season = recordResult(season, simulateFixture(fixture, (id) => franchiseById(id).squad, rng));
+      season = recordResult(season, simulateFixture(fixture, (id) => franchiseIn(season, id).squad, rng));
     }
     this.season = season;
     saveSeason(season);
