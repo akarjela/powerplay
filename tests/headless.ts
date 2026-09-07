@@ -7,7 +7,7 @@ import {
   WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph,
 } from "../src/game/config";
 import type { Stance } from "../src/game/config";
-import { contactDamping, nextAngularVelocity, settlePivot, swingTarget } from "../src/game/physics/swing";
+import { batSpeedFactor, contactDamping, nextAngularVelocity, settlePivot, swingEffort, swingTarget } from "../src/game/physics/swing";
 import type { Point } from "../src/game/physics/swing";
 import { fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity, runOut } from "../src/game/physics/field";
 import type { Fielder } from "../src/game/physics/field";
@@ -37,6 +37,8 @@ export interface Player {
   pointer(elapsedMs: number): Point;
 
   power?: number;
+
+  technique?: number;
 }
 
 export interface Played {
@@ -159,12 +161,13 @@ export class Headless {
     let heightAtBatPx = -1;
     let struckAtMs = 0;
     let effort = 0;
+    const speed = batSpeedFactor(player.technique ?? 0.5);
 
     for (let frame = 0; frame < 360; frame++) {
       settlePivot(this.pivot, this.home, player.stance);
       const target = swingTarget(player.pointer(this.elapsedMs), this.pivot);
-      Body.setAngularVelocity(this.bat, nextAngularVelocity(this.bat.angle, this.bat.angularVelocity, target));
-      if (!this.struck) effort = Math.max(effort, Math.abs(this.bat.angularVelocity) / MAX_SWING_SPEED);
+      Body.setAngularVelocity(this.bat, nextAngularVelocity(this.bat.angle, this.bat.angularVelocity, target, speed));
+      if (!this.struck) effort = Math.max(effort, swingEffort(this.bat.angularVelocity, speed));
 
       if (this.struck && isRolling(ball.position.y, ball.velocity.y)) {
         Body.setVelocity(ball, { x: rollingVelocity(ball.velocity.x), y: ball.velocity.y });
@@ -181,7 +184,7 @@ export class Headless {
 
       if (this.struck && !struckBefore && this.contact) {
         struckAtMs = this.elapsedMs;
-        const soft = contactDamping(this.contact.angularVelocity, player.power ?? 0.5);
+        const soft = contactDamping(this.contact.angularVelocity, player.power ?? 0.5, speed);
         Body.setVelocity(ball, { x: ball.velocity.x * soft, y: ball.velocity.y * soft });
         bearing = shotBearing({
           aheadPx: this.contact.aheadPx,

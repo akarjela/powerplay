@@ -2,7 +2,7 @@ import Phaser from "phaser";
 
 import { BAT_BODY, BAT_CATEGORY, BAT_LENGTH, BAT_WIDTH } from "../config";
 import type { Stance } from "../config";
-import { nextAngularVelocity, settlePivot, swingTarget } from "./swing";
+import { nextAngularVelocity, settlePivot, swingEffort, swingTarget } from "./swing";
 import type { Point } from "./swing";
 
 export class Bat {
@@ -12,6 +12,7 @@ export class Bat {
   private readonly pivot: { x: number; y: number };
   private readonly home: { x: number; y: number };
   private stance: Stance = "neutral";
+  private speed = 1;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
@@ -43,6 +44,18 @@ export class Bat {
     this.stance = stance;
   }
 
+  setSpeed(speed: number): void {
+    this.speed = speed;
+  }
+
+  get speedFactor(): number {
+    return this.speed;
+  }
+
+  effort(): number {
+    return swingEffort(this.body.angularVelocity, this.speed);
+  }
+
   get pivotPoint(): { x: number; y: number } {
     return this.pivot;
   }
@@ -52,7 +65,7 @@ export class Bat {
     const target = swingTarget(pointer, this.pivot);
     this.scene.matter.body.setAngularVelocity(
       this.body,
-      nextAngularVelocity(this.body.angle, this.body.angularVelocity, target),
+      nextAngularVelocity(this.body.angle, this.body.angularVelocity, target, this.speed),
     );
   }
 

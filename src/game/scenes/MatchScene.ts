@@ -2,11 +2,11 @@ import Phaser from "phaser";
 
 import {
   BALL_BODY, BALL_RADIUS, BATTER_X, BOWLER_X, CANVAS, DELIVERY_SHAPE, GLOVE_LOCAL_X, GROUND_BODY,
-  GROUND_Y, MAX_SWING_SPEED, PIVOT, WIDE_BALL_MASK, WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph, m,
+  GROUND_Y, PIVOT, WIDE_BALL_MASK, WORLD_LEFT, WORLD_WIDTH, deliveryAim, kph, m,
 } from "../config";
 import type { Stance } from "../config";
 import { Bat } from "../physics/bat";
-import { contactDamping } from "../physics/swing";
+import { batSpeedFactor, contactDamping } from "../physics/swing";
 import {
   fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity, runOut,
 } from "../physics/field";
@@ -522,6 +522,7 @@ export class MatchScene extends Phaser.Scene {
   private takeGuard(batter: Batter): void {
     if (this.striker?.id === batter.id) return;
     this.striker = batter;
+    this.bat.setSpeed(batSpeedFactor(unit(batter.technique)));
     this.batsman?.destroy();
     this.batsman = drawBatsman(this, PIVOT.y - GROUND_Y, this.sides.you.colours, lookFor(batter.id)).setDepth(depthFor(0, 1));
   }
@@ -626,11 +627,11 @@ export class MatchScene extends Phaser.Scene {
     const ball = this.ball;
     if (!ball) return;
 
-    if (!this.struck) this.effort = Math.min(1, Math.max(this.effort, Math.abs(this.bat.body.angularVelocity) / MAX_SWING_SPEED));
+    if (!this.struck) this.effort = Math.max(this.effort, this.bat.effort());
 
     if (this.justStruck) {
       this.justStruck = false;
-      const soft = contactDamping(this.contactAngularVelocity, unit(this.striker?.power ?? 50));
+      const soft = contactDamping(this.contactAngularVelocity, unit(this.striker?.power ?? 50), this.bat.speedFactor);
       this.matter.body.setVelocity(ball, { x: ball.velocity.x * soft, y: ball.velocity.y * soft });
     }
     if (this.struck && isRolling(ball.position.y, ball.velocity.y)) {
