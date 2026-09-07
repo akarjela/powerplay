@@ -128,8 +128,7 @@ design decision on how the two paths value a ball (they are measured, and
 close, and not identical), sound, touch input, deployment, season history.
 `HANDOFF.md` has the ordered list.
 
-Teams are fictional throughout. Each eleven mirrors that franchise's IPL 2026
-side, and the auction adds sixteen retired legends; every player carries a
-real first name with a changed surname, so the elevens read as familiar
-without using a licensed full name or likeness. Neither the franchise names
-nor the player names have been cleared against a trademark register.
+Teams are fictional; the players are not. Each eleven is that franchise's
+IPL 2026 side under real names, and the auction adds sixteen retired legends.
+This is a private build: player likenesses are licensed, so rename them and
+clear the franchise names against a trademark register before any release.

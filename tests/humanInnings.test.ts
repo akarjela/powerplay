@@ -80,24 +80,24 @@ describe("the human innings with a batting order and a target", () => {
 
   it("opens with the first two, rotates on odd runs, and swaps at the over", () => {
     const innings = new HumanInnings(squad);
-    expect(innings.atTheCrease.map((l) => l.batter.name)).toEqual(["Rohit Saxena", "Ryan Richards"]);
+    expect(innings.atTheCrease.map((l) => l.batter.name)).toEqual(["Rohit Sharma", "Ryan Rickelton"]);
     innings.record(one);
-    expect(innings.atTheCrease[0].batter.name).toBe("Ryan Richards");
+    expect(innings.atTheCrease[0].batter.name).toBe("Ryan Rickelton");
     innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot);
 
-    expect(innings.atTheCrease[0].batter.name).toBe("Rohit Saxena");
+    expect(innings.atTheCrease[0].batter.name).toBe("Rohit Sharma");
   });
 
   it("sends the next man in when one is out, and scores each line", () => {
     const innings = new HumanInnings(squad);
     innings.record(six);
     innings.record(out);
-    expect(innings.atTheCrease[0].batter.name).toBe("Will Jackson");
-    const saxena = innings.battingLines.find((l) => l.batter.name === "Rohit Saxena")!;
-    expect(saxena.runs).toBe(6);
-    expect(saxena.balls).toBe(2);
-    expect(saxena.sixes).toBe(1);
-    expect(saxena.dismissal).toBe("bowled");
+    expect(innings.atTheCrease[0].batter.name).toBe("Will Jacks");
+    const rohit = innings.battingLines.find((l) => l.batter.name === "Rohit Sharma")!;
+    expect(rohit.runs).toBe(6);
+    expect(rohit.balls).toBe(2);
+    expect(rohit.sixes).toBe(1);
+    expect(rohit.dismissal).toBe("bowled");
   });
 
   it("ends the moment a target is reached, and says what was required until then", () => {
