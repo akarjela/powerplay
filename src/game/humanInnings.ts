@@ -1,8 +1,10 @@
 import { BALLS_PER_OVER, OVERS, WICKETS } from "../sim/innings";
-import type { BattingLine, InningsSummary } from "../sim/innings";
-import { countsAsBall } from "../sim/types";
+import type { BattingLine, BowlingLine, InningsSummary } from "../sim/innings";
+import { countsAsBall, runsAgainstBowler } from "../sim/types";
 import type { Outcome } from "../sim/types";
-import type { Batter, Squad } from "../sim/player";
+import type { Batter, Bowler, Squad } from "../sim/player";
+import { emptyExtras, sheetFrom, tallyExtra } from "../sim/scorecard";
+import type { Extras, FallOfWicket, Scoresheet } from "../sim/scorecard";
 
 export type BallMark = { label: string; kind: "dot" | "runs" | "boundary" | "wicket" | "extra" };
 
@@ -20,9 +22,13 @@ export class HumanInnings {
   private nonStriker?: Batter;
   private nextIn = 2;
   private readonly lines = new Map<string, BattingLine>();
+  private readonly figures = new Map<string, BowlingLine>();
+  readonly extras: Extras = emptyExtras();
+  readonly fallOfWickets: FallOfWicket[] = [];
 
   private over: BallMark[] = [];
   private overRuns = 0;
+  private overConceded = 0;
 
   private overNumber = 1;
 
@@ -32,26 +38,40 @@ export class HumanInnings {
     if (squad) {
       this.striker = squad.batters[0];
       this.nonStriker = squad.batters[1];
+      this.lineFor(this.striker);
+      this.lineFor(this.nonStriker);
     }
   }
 
-  record(outcome: Outcome): void {
+  record(outcome: Outcome, bowler?: Bowler): void {
     if (this.complete) return;
 
     if (this.balls > 0 && this.balls % BALLS_PER_OVER === 0 && this.over.length >= BALLS_PER_OVER) {
       this.over = [];
       this.overRuns = 0;
+      this.overConceded = 0;
       this.overNumber = this.balls / BALLS_PER_OVER + 1;
     }
 
     const scored = outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
     this.runs += scored;
     this.overRuns += scored;
+    tallyExtra(this.extras, outcome);
     if (outcome.wicket) this.wickets++;
     const legal = countsAsBall(outcome);
     if (legal) this.balls++;
 
     this.over.push(markFor(outcome));
+
+    if (bowler) {
+      const figures = this.bowlingLineFor(bowler);
+      const conceded = runsAgainstBowler(outcome);
+      if (legal) figures.balls++;
+      figures.runs += conceded;
+      this.overConceded += conceded;
+      if (outcome.wicket && outcome.wicket !== "run-out") figures.wickets++;
+      if (legal && figures.balls % BALLS_PER_OVER === 0 && this.overConceded === 0) figures.maidens++;
+    }
 
     if (this.striker) {
       const line = this.lineFor(this.striker);
@@ -64,7 +84,12 @@ export class HumanInnings {
       if (outcome.wicket) {
         line.dismissal = outcome.wicket;
         line.how = outcome.description;
+        if (bowler && outcome.wicket !== "run-out") line.bowler = bowler.name;
+        this.fallOfWickets.push({
+          wicket: this.wickets, runs: this.runs, batter: this.striker.id, name: this.striker.name, balls: this.balls,
+        });
         this.striker = this.squad!.batters[this.nextIn++];
+        if (this.striker) this.lineFor(this.striker);
       } else if (outcome.runs % 2 === 1) {
         [this.striker, this.nonStriker] = [this.nonStriker, this.striker];
       }
@@ -135,9 +160,40 @@ export class HumanInnings {
     return this.squad ? this.squad.batters.filter((b) => this.lines.has(b.id)).map((b) => this.lineFor(b)) : [];
   }
 
+  get bowlingLines(): BowlingLine[] {
+    return [...this.figures.values()];
+  }
+
+  bowlingLineFor(bowler: Bowler): BowlingLine {
+    let line = this.figures.get(bowler.id);
+    if (!line) {
+      line = { bowler, balls: 0, runs: 0, wickets: 0, maidens: 0 };
+      this.figures.set(bowler.id, line);
+    }
+    return line;
+  }
+
+  oversBowled(bowler: Bowler): number {
+    return Math.floor((this.figures.get(bowler.id)?.balls ?? 0) / BALLS_PER_OVER);
+  }
+
   get summary(): InningsSummary {
     if (!this.squad) throw new Error("an innings without a squad has no summary");
     return { squad: this.squad, runs: this.runs, wickets: this.wickets, balls: this.balls, won: this.won };
+  }
+
+  get sheet(): Scoresheet {
+    if (!this.squad) throw new Error("an innings without a squad has no scoresheet");
+    return sheetFrom({
+      squad: this.squad,
+      runs: this.runs,
+      wickets: this.wickets,
+      balls: this.balls,
+      batting: this.battingLines,
+      bowling: this.bowlingLines,
+      extras: this.extras,
+      fallOfWickets: this.fallOfWickets,
+    });
   }
 
   private lineFor(batter: Batter): BattingLine {

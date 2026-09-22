@@ -4,7 +4,7 @@ import { oversOf } from "../../../sim/innings";
 import {
   caps, champion, involvesYou, isOver, nextFixture, playoffs, standings,
 } from "../../../sim/tournament";
-import type { Fixture, Season } from "../../../sim/tournament";
+import type { Fixture, Played, Season } from "../../../sim/tournament";
 import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
 import { squadPanel } from "./squadPanel";
 
@@ -14,9 +14,10 @@ export interface SeasonScreenHandlers {
   onSimulateToYou: () => void;
   onTeams: () => void;
   onNewSeason: () => void;
+  onScoresheet: (played: Played) => void;
 }
 
-const STAGE_NAME: Record<Fixture["stage"], string> = {
+export const STAGE_NAME: Record<Fixture["stage"], string> = {
   league: "League", qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "Final",
 };
 
@@ -178,7 +179,15 @@ export class SeasonScreen {
         el("span", "code", a.code), el("span", "score", `${r.first.runs}/${r.first.wickets}`), el("span", "ov", `(${oversOf(r.first.balls)})`),
         el("span", "code", b.code), el("span", "score", `${r.second.runs}/${r.second.wickets}`), el("span", "ov", `(${oversOf(r.second.balls)})`),
       );
-      item.append(line, el("div", "summary", r.summary));
+      const foot = el("div", "foot");
+      foot.append(el("div", "summary", r.summary));
+      if (r.sheets) {
+        const sheet = el("button", "star", "Scoresheet");
+        sheet.type = "button";
+        sheet.addEventListener("click", () => this.handlers.onScoresheet(r));
+        foot.append(sheet);
+      }
+      item.append(line, foot);
       panel.append(item);
     }
     return panel;

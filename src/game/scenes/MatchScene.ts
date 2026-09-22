@@ -23,17 +23,21 @@ import { Scoreboard } from "../hud/scoreboard";
 import type { ScoreboardModel } from "../hud/scoreboard";
 import { clearMoment, showMoment } from "../hud/moments";
 import { hideCard, showCard } from "../hud/card";
+import type { CardSpec } from "../hud/card";
+import { hideScoresheet, showScoresheet } from "../hud/scoresheet";
+import type { ScoresheetSide } from "../hud/scoresheet";
 import { InningsView } from "../hud/inningsView";
 import { reducedMotion } from "../hud/dom";
 import type { Outcome } from "../../sim/types";
-import { countsAsBall, runsAgainstBowler } from "../../sim/types";
+import { countsAsBall } from "../../sim/types";
 import { bridge } from "../../sim/bridge";
 import { HumanInnings } from "../humanInnings";
 import { bowl, phaseOf } from "../../sim/delivery";
 import type { Delivery, Line, Phase } from "../../sim/delivery";
 import { BALLS_PER_OVER, OVERS, chooseBowler, economyOf, oversOf, simulateInnings, strikeRateOf } from "../../sim/innings";
-import type { BowlingLine, InningsResult } from "../../sim/innings";
+import type { InningsResult } from "../../sim/innings";
 import { resultOf, scoreline } from "../../sim/match";
+import { sheetOf } from "../../sim/scorecard";
 import { makeRng } from "../../sim/rng";
 import type { Rng } from "../../sim/rng";
 import type { Batter, Bowler } from "../../sim/player";
@@ -133,9 +137,8 @@ export class MatchScene extends Phaser.Scene {
 
   private bowler?: Bowler;
   private lastBowler: Bowler | null = null;
-  private bowling = new Map<string, BowlingLine>();
+  private resultCard?: CardSpec;
 
-  private overRunsAgainst = 0;
   private currentOver = -1;
   private phase: Phase = "powerplay";
   private field: Fielder[] = fieldFor("powerplay");
@@ -160,8 +163,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.rng = makeRng(this.fixture && this.season ? `${this.season.seed}:${this.fixture.id}` : `quick-${Date.now()}`);
     this.innings = new HumanInnings(this.sides.you.squad);
-    this.bowling = new Map();
-    this.overRunsAgainst = 0;
+    this.resultCard = undefined;
     this.lastBowler = null;
     this.bowler = undefined;
     this.delivery = undefined;
@@ -211,6 +213,7 @@ export class MatchScene extends Phaser.Scene {
       this.scoreboard.destroy();
       this.watching?.destroy();
       hideCard();
+      hideScoresheet();
       clearMoment();
     });
 
@@ -430,25 +433,60 @@ export class MatchScene extends Phaser.Scene {
         batting: this.innings.battingLines.filter((l) => l.balls > 0 || l.runs > 0).map((l) => ({
           id: l.batter.id, name: l.batter.name, squad: you.id, runs: l.runs, balls: l.balls,
         })),
-        bowling: [...this.bowling.values()].filter((l) => l.balls > 0).map((l) => ({
+        bowling: this.innings.bowlingLines.filter((l) => l.balls > 0).map((l) => ({
           id: l.bowler.id, name: l.bowler.name, squad: them.id, wickets: l.wickets, runs: l.runs, balls: l.balls,
         })),
       };
       const theirCard = cardOf(theirs, you.id);
       const cards = this.youBatFirst ? { first: yourCard, second: theirCard } : { first: theirCard, second: yourCard };
-      this.season = recordResult(this.season, playedFrom(this.fixture, first, second, cards));
+      const yourSheet = this.innings.sheet;
+      const theirSheet = sheetOf(theirs);
+      const sheets = this.youBatFirst ? { first: yourSheet, second: theirSheet } : { first: theirSheet, second: yourSheet };
+      this.season = recordResult(this.season, playedFrom(this.fixture, first, second, cards, sheets));
       saveSeason(this.season);
     }
 
     this.stage = "result";
-    showCard({
+    const tone = won ? "won" : result.winner ? "lost" : "neutral";
+    const back = this.season ? "Back to the table" : "Back to the teams";
+    this.resultCard = {
       title: result.winner ? `${result.winner.name} ${result.margin}` : "Tied",
       lines,
-      prompt: this.season ? "Back to the table" : "Back to the teams",
+      prompt: back,
       colours: you.colours,
-      tone: won ? "won" : result.winner ? "lost" : "neutral",
-    }, () => this.onClick());
+      tone,
+      choices: [
+        { label: "Full scoresheet", onPick: () => this.showSheet(result.summary, tone, back) },
+        { label: back, primary: true, onPick: () => this.leave() },
+      ],
+    };
+    showCard(this.resultCard, () => this.onClick());
     this.renderHud();
+  }
+
+  private showSheet(summary: string, tone: "won" | "lost" | "neutral", back: string): void {
+    const { you, them } = this.sides;
+    const side = (f: Franchise): ScoresheetSide => ({
+      id: f.id, code: f.code, name: f.name, primary: f.colours.primary, secondary: f.colours.secondary,
+    });
+    const yours = { sheet: this.innings.sheet, batting: side(you), bowling: side(them) };
+    const theirs = { sheet: sheetOf(this.theirInnings!), batting: side(them), bowling: side(you) };
+    const [first, second] = this.youBatFirst ? [yours, theirs] : [theirs, yours];
+    this.scoreboard.setVisible(false);
+    showScoresheet({
+      title: this.matchTitle(),
+      result: summary,
+      innings: [first, { ...second, target: first.sheet.runs + 1 }],
+      you: you.id,
+      tone,
+      actions: [
+        { label: "Back", onPick: () => {
+          this.scoreboard.setVisible(true);
+          showCard(this.resultCard!, () => this.onClick());
+        } },
+        { label: back, primary: true, onPick: () => this.leave() },
+      ],
+    });
   }
 
   private leave(): void {
@@ -460,7 +498,7 @@ export class MatchScene extends Phaser.Scene {
     const { you, them } = this.sides;
     const need = innings.required;
 
-    const line = this.bowler ? this.bowlingLine(this.bowler) : undefined;
+    const line = this.bowler ? this.innings.bowlingLineFor(this.bowler) : undefined;
 
     this.scoreboard.render({
       team: { code: you.code, primary: you.colours.primary, secondary: you.colours.secondary },
@@ -510,15 +548,6 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  private bowlingLine(bowler: Bowler): BowlingLine {
-    let line = this.bowling.get(bowler.id);
-    if (!line) {
-      line = { bowler, balls: 0, runs: 0, wickets: 0, maidens: 0 };
-      this.bowling.set(bowler.id, line);
-    }
-    return line;
-  }
-
   private takeGuard(batter: Batter): void {
     if (this.striker?.id === batter.id) return;
     this.striker = batter;
@@ -559,10 +588,8 @@ export class MatchScene extends Phaser.Scene {
       this.phase = phase;
       this.setField(fieldFor(phase));
     }
-    const oversBowled = (b: Bowler) => Math.floor((this.bowling.get(b.id)?.balls ?? 0) / BALLS_PER_OVER);
-    this.bowler = chooseBowler(this.sides.them.squad.bowlers, oversBowled, this.lastBowler, this.rng);
+    this.bowler = chooseBowler(this.sides.them.squad.bowlers, (b) => this.innings.oversBowled(b), this.lastBowler, this.rng);
     this.lastBowler = this.bowler;
-    this.overRunsAgainst = 0;
   }
 
   private bowl(): void {
@@ -701,8 +728,7 @@ export class MatchScene extends Phaser.Scene {
 
     const striker = this.innings.atTheCrease[0];
     const runsBefore = striker?.runs ?? 0;
-    this.innings.record(outcome);
-    this.creditBowler(outcome);
+    this.innings.record(outcome, this.bowler);
 
     if (this.struck && this.ball) {
       const downfield = metresDownfield(this.ball.position.x);
@@ -721,18 +747,6 @@ export class MatchScene extends Phaser.Scene {
     if (this.innings.complete) {
       this.time.delayedCall(1600, () => this.finishMatch());
     }
-  }
-
-  private creditBowler(outcome: Outcome): void {
-    if (!this.bowler) return;
-    const line = this.bowlingLine(this.bowler);
-    const legal = countsAsBall(outcome);
-    const conceded = runsAgainstBowler(outcome);
-    if (legal) line.balls++;
-    line.runs += conceded;
-    this.overRunsAgainst += conceded;
-    if (outcome.wicket && outcome.wicket !== "run-out") line.wickets++;
-    if (legal && line.balls % BALLS_PER_OVER === 0 && this.overRunsAgainst === 0) line.maidens++;
   }
 
   private retireBall(): void {

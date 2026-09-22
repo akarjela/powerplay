@@ -96,8 +96,9 @@ and a list of forty-odd things that looked correct and were not.
 ### The broadcast layer
 
 The scoreboard, the moments (FOUR, SIX, WICKET, a fifty, the end of an over),
-the toss and result cards, the opposition's innings replay, the team and
-season screens, and the end-of-season trophy are all DOM over the canvas,
+the toss and result cards, the full scoresheet, the opposition's innings
+replay, the team and season screens, and the end-of-season trophy are all DOM
+over the canvas,
 under `src/game/hud/`, on the design system in
 `design-system/cricketgame/MASTER.md`. Everything honours
 `prefers-reduced-motion`.

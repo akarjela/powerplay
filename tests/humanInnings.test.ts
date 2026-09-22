@@ -146,3 +146,62 @@ describe("the over on the strip", () => {
     expect(innings.thisOverRuns).toBe(2);
   });
 });
+
+describe("the human innings as a scoresheet", () => {
+  const squad = franchiseById("mum").squad;
+  const attack = franchiseById("che").squad.bowlers;
+  const four: Outcome = { runs: 4, description: "" };
+
+  it("keeps the bowler's figures: balls, runs, wickets, maidens", () => {
+    const innings = new HumanInnings(squad);
+    const [a, b] = attack;
+    innings.record(four, a);
+    innings.record(wide, a);
+    innings.record(out, a);
+    for (let i = 0; i < 4; i++) innings.record(dot, a);
+    expect(innings.bowlingLineFor(a)).toMatchObject({ balls: 6, runs: 5, wickets: 1, maidens: 0 });
+    for (let i = 0; i < 6; i++) innings.record(dot, b);
+    expect(innings.bowlingLineFor(b)).toMatchObject({ balls: 6, runs: 0, wickets: 0, maidens: 1 });
+    expect(innings.bowlingLines.map((l) => l.bowler.id)).toEqual([a.id, b.id]);
+  });
+
+  it("does not give a run-out to the bowler, and names the bowler on the batter's line", () => {
+    const innings = new HumanInnings(squad);
+    const [a] = attack;
+    innings.record({ runs: 1, wicket: "run-out", description: "" }, a);
+    innings.record(out, a);
+    expect(innings.bowlingLineFor(a).wickets).toBe(1);
+    const [first, second, third] = innings.battingLines;
+    expect(first.dismissal).toBe("run-out");
+    expect(first.bowler).toBeUndefined();
+    expect(second.dismissal).toBeUndefined();
+    expect(third.dismissal).toBe("bowled");
+    expect(third.bowler).toBe(a.name);
+  });
+
+  it("tallies the extras and the fall of wickets", () => {
+    const innings = new HumanInnings(squad);
+    innings.record(wide);
+    innings.record(four);
+    innings.record(out);
+    innings.record({ runs: 1, extra: "leg-bye", description: "" });
+    innings.record(out);
+    expect(innings.extras).toEqual({ wides: 1, noBalls: 0, byes: 0, legByes: 1 });
+    expect(innings.fallOfWickets).toEqual([
+      { wicket: 1, runs: 5, batter: squad.batters[0].id, name: squad.batters[0].name, balls: 2 },
+      { wicket: 2, runs: 6, batter: squad.batters[1].id, name: squad.batters[1].name, balls: 4 },
+    ]);
+  });
+
+  it("lists both openers from the first ball, and the whole order on the sheet", () => {
+    const innings = new HumanInnings(squad);
+    expect(innings.battingLines.map((l) => l.batter.id)).toEqual(squad.batters.slice(0, 2).map((b) => b.id));
+    innings.record(out, attack[0]);
+    const sheet = innings.sheet;
+    expect(sheet.batting.map((b) => b.id)).toEqual(squad.batters.slice(0, 3).map((b) => b.id));
+    expect(sheet.didNotBat).toHaveLength(8);
+    expect(sheet.batting[0].dismissal).toBe("bowled");
+    expect(sheet.bowling[0]).toMatchObject({ id: attack[0].id, balls: 1, wickets: 1 });
+    expect(sheet.fallOfWickets[0].runs).toBe(0);
+  });
+});

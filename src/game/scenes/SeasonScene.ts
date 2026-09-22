@@ -3,12 +3,14 @@ import Phaser from "phaser";
 import { franchiseById, franchiseIn } from "../../data/franchises";
 import { loadSeason, saveSeason, clearSeason } from "../season/store";
 import {
-  fate, involvesYou, isOver, nextFixture, playoffs, recordResult, resultFor, simulateFixture,
+  fate, fixtureById, involvesYou, isOver, nextFixture, playoffs, recordResult, resultFor, simulateFixture,
 } from "../../sim/tournament";
-import type { Fixture, Season } from "../../sim/tournament";
+import type { Fixture, Played, Season } from "../../sim/tournament";
 import { makeRng } from "../../sim/rng";
 import { hideFate, showFate } from "../hud/fateCard";
-import { SeasonScreen } from "../hud/screens/seasonScreen";
+import { hideScoresheet, showScoresheet } from "../hud/scoresheet";
+import type { ScoresheetSide } from "../hud/scoresheet";
+import { STAGE_NAME, SeasonScreen } from "../hud/screens/seasonScreen";
 
 export class SeasonScene extends Phaser.Scene {
   private season!: Season;
@@ -35,9 +37,11 @@ export class SeasonScene extends Phaser.Scene {
         clearSeason();
         this.scene.start("select");
       },
+      onScoresheet: (played) => this.scoresheet(played),
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       hideFate();
+      hideScoresheet();
       this.screen?.destroy();
       this.screen = undefined;
     });
@@ -74,6 +78,27 @@ export class SeasonScene extends Phaser.Scene {
       by,
       onClose: () => this.render(),
       onNewSeason: finished ? () => { clearSeason(); this.scene.start("select"); } : undefined,
+    });
+  }
+
+  private scoresheet(played: Played): void {
+    if (!played.sheets) return;
+    const fixture = fixtureById(this.season, played.fixtureId);
+    const side = (id: string): ScoresheetSide => {
+      const f = franchiseById(id);
+      return { id: f.id, code: f.code, name: f.name, primary: f.colours.primary, secondary: f.colours.secondary };
+    };
+    const first = { sheet: played.sheets.first, batting: side(played.first.squad), bowling: side(played.second.squad) };
+    const second = { sheet: played.sheets.second, batting: side(played.second.squad), bowling: side(played.first.squad), target: played.first.runs + 1 };
+    const mine = involvesYou(this.season, fixture);
+    const stage = fixture.stage === "league" ? `Round ${fixture.round}` : STAGE_NAME[fixture.stage];
+    showScoresheet({
+      title: `${stage}: ${franchiseById(fixture.home).name} v ${franchiseById(fixture.away).name}`,
+      result: played.summary,
+      innings: [first, second],
+      you: this.season.you,
+      tone: mine ? (played.winner === this.season.you ? "won" : played.winner ? "lost" : "neutral") : undefined,
+      actions: [{ label: "Close", primary: true, onPick: () => undefined }],
     });
   }
 

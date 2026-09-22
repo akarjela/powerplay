@@ -2,6 +2,8 @@ import type { Rng } from "./rng";
 import type { Squad } from "./player";
 import { simulateMatch, netRunRateInnings, resultOf } from "./match";
 import type { InningsResult, InningsSummary } from "./innings";
+import { sheetOf } from "./scorecard";
+import type { Scoresheet } from "./scorecard";
 
 export type Stage = "league" | "qualifier1" | "eliminator" | "qualifier2" | "final";
 
@@ -48,6 +50,7 @@ export interface Played {
   first: InningsLine;
   second: InningsLine;
   cards?: { first: InningsCard; second: InningsCard };
+  sheets?: { first: Scoresheet; second: Scoresheet };
 
   winner: string | null;
   summary: string;
@@ -225,6 +228,7 @@ export function simulateFixture(
     first: lineOf(match.first),
     second: lineOf(match.second),
     cards: { first: cardOf(match.first, match.second.squad.id), second: cardOf(match.second, match.first.squad.id) },
+    sheets: { first: sheetOf(match.first), second: sheetOf(match.second) },
     winner: match.winner?.id ?? null,
     summary: match.summary,
   };
@@ -235,6 +239,7 @@ export function playedFrom(
   first: InningsSummary,
   second: InningsSummary,
   cards?: { first: InningsCard; second: InningsCard },
+  sheets?: { first: Scoresheet; second: Scoresheet },
 ): Played {
   const result = resultOf(first, second);
   return {
@@ -242,6 +247,7 @@ export function playedFrom(
     first: lineOf(first),
     second: lineOf(second),
     cards,
+    sheets,
     winner: result.winner?.id ?? null,
     summary: result.summary,
   };

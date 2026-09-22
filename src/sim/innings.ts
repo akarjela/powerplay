@@ -5,6 +5,8 @@ import type { Delivery } from "./delivery";
 import { playBall } from "./outcome";
 import type { Outcome, Dismissal } from "./types";
 import { countsAsBall, runsAgainstBowler } from "./types";
+import { emptyExtras, tallyExtra } from "./scorecard";
+import type { Extras, FallOfWicket } from "./scorecard";
 
 export const OVERS = 20;
 export const BALLS_PER_OVER = 6;
@@ -22,6 +24,8 @@ export interface BattingLine {
   dismissal?: Dismissal;
 
   how?: string;
+
+  bowler?: string;
 }
 
 export interface BowlingLine {
@@ -38,6 +42,7 @@ export interface BallEvent {
 
   ball: number;
   striker: Batter;
+  bowler: Bowler;
   delivery: Delivery;
   outcome: Outcome;
 
@@ -58,6 +63,8 @@ export interface InningsSummary {
 export interface InningsResult extends InningsSummary {
   batting: BattingLine[];
   bowling: BowlingLine[];
+  extras: Extras;
+  fallOfWickets: FallOfWicket[];
   log: BallEvent[];
 }
 
@@ -105,6 +112,10 @@ export function simulateInnings(
   let striker = batting.batters[0];
   let nonStriker = batting.batters[1];
   let nextIn = 2;
+  lineFor(striker);
+  lineFor(nonStriker);
+  const extras = emptyExtras();
+  const fallOfWickets: FallOfWicket[] = [];
 
   let runs = 0;
   let wickets = 0;
@@ -142,6 +153,7 @@ export function simulateInnings(
 
       const scored = teamRuns(outcome);
       runs += scored;
+      tallyExtra(extras, outcome);
       concededThisOver += runsAgainstBowler(outcome);
       figures.runs += runsAgainstBowler(outcome);
 
@@ -162,9 +174,11 @@ export function simulateInnings(
         figures.wickets += chargeableToBowler(outcome.wicket) ? 1 : 0;
         strikerLine.dismissal = outcome.wicket;
         strikerLine.how = outcome.description;
+        if (chargeableToBowler(outcome.wicket)) strikerLine.bowler = bowler.name;
+        fallOfWickets.push({ wicket: wickets, runs, batter: striker.id, name: striker.name, balls });
       }
 
-      log.push({ over, ball: legal || 1, striker, delivery, outcome, runs, wickets });
+      log.push({ over, ball: legal || 1, striker, bowler, delivery, outcome, runs, wickets });
 
       if (options.target !== undefined && runs >= options.target) {
         won = true;
@@ -174,6 +188,7 @@ export function simulateInnings(
       if (outcome.wicket) {
         if (nextIn >= batting.batters.length || wickets >= WICKETS) break;
         striker = batting.batters[nextIn++];
+        lineFor(striker);
       } else if (scored % 2 === 1) {
         [striker, nonStriker] = [nonStriker, striker];
       }
@@ -190,6 +205,8 @@ export function simulateInnings(
     balls,
     batting: batting.batters.filter((b) => batLines.has(b.id)).map((b) => lineFor(b)),
     bowling: bowling.bowlers.filter((b) => bowlLines.has(b.id)).map((b) => figuresFor(b)),
+    extras,
+    fallOfWickets,
     log,
     won: options.target !== undefined ? won : undefined,
   };

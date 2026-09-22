@@ -1,7 +1,15 @@
 # Powerplay — handoff
 
-_Last updated: 2026-09-07. Everything below M5 is complete and the tree is
-clean. The auction's prices were retuned the same evening after a
+_Last updated: 2026-09-11. Everything below M5 is complete. **New this
+session (2026-09-11):** a **full scoresheet** -- both innings' batting cards
+with how each man was out, extras broken down, fall of wickets, did-not-bat,
+and the bowling figures -- reachable from the result card and from every
+result on the season screen. Extras, the fall of wickets and the dismissing
+bowler are now kept on both paths (`src/sim/scorecard.ts`), the human innings
+owns the bowling figures the scene used to keep, and every season result
+carries a serialisable sheet (`Played.sheets`). Checked in the browser on
+both paths. The tree was left uncommitted at the end of that session.
+Before that (2026-09-07): the tree was clean. The auction's prices were retuned the same evening after a
 playtest ("each player is too expensive"): see trap 44 and the measured
 auction table. **New this session:** technique now sets the speed of the bat (a
 tail-ender's bat lags the pointer more and scores less, measured), and an
@@ -123,6 +131,19 @@ Read this first; everything below is the detail behind it.
   short of bowlers. `Season.rosters` carries the elevens; `franchiseIn()`
   overlays them on a franchise shell. A DOM screen on the design system, an
   `AuctionScene`, a third tab, an in-progress save under its own key.
+- **The full scoresheet.** `src/sim/scorecard.ts` is the one shape both
+  paths fill: `Scoresheet` (plain data: batting lines with `dismissal` and
+  the dismissing `bowler`, `didNotBat`, `extras` by kind, `fallOfWickets`,
+  bowling figures), `sheetFrom`/`sheetOf`, `tallyExtra`, `howOut`. The sim
+  innings tallies extras and the fall of wickets in its loop and gives both
+  openers a line from the first ball; `HumanInnings.record(outcome, bowler)`
+  does the same and now keeps the bowler's figures (balls, runs, wickets,
+  maidens) that `MatchScene` used to keep in a map. `Played.sheets` carries
+  both innings of every result; `simulateFixture` and `settle()` both fill
+  it. `hud/scoresheet.ts` draws it on the design system
+  (`pages/scoresheet.md`): from the result card's **Full scoresheet** choice
+  (the strip hides while it is up, **Back** restores the card) and from a
+  **Scoresheet** chip on each season result that has one.
 
 ### What is left
 
@@ -213,10 +234,10 @@ attack costs; see *What is left*.
 | | |
 | --- | --- |
 | Repo | Local git, `main`. **Not pushed to GitHub** — no remote set |
-| Tests | 187 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge, 6 on power and technique through the same harness, 16 on the auction, 12 on the camera, 12 on the season |
+| Tests | 203 passing (`npm test`), ~4s, no browser. Includes 9 that play the real Matter world headlessly, 7 on the bridge, 6 on power and technique through the same harness, 16 on the auction, 12 on the camera, 12 on the season, 12 on the scoresheet |
 | Build / typecheck | Clean (`npm run build`, `npx tsc --noEmit`) |
 | Dev server | `npm run dev` → http://localhost:5173. Opens on the team screen: quick match, season or auction. Fonts (Bebas Neue, Barlow Semi Condensed) come from Google Fonts with local fallbacks |
-| Source | ~6,368 lines across 39 files in `src/` (plus ~779 of CSS); ~2,493 across 16 in `tests/` |
+| Source | ~6,800 lines across 40 files in `src/` (plus ~866 of CSS); ~2,690 across 17 in `tests/` |
 | Persistence | One season under `powerplay.season.v1` and one auction in progress under `powerplay.auction.v1`, both JSON in localStorage |
 | Node | 20.20.2 locally |
 
@@ -371,9 +392,11 @@ compromises live in one file, and now every Matter body too.
   and cut-off reach, rolling and the rest prediction, and `judgeBall` — the
   one function that decides what a ball was, called by scene and harness alike
 - `src/game/humanInnings.ts` — pure. The innings you are batting: the score,
-  and now the batting order (who is on strike, each man's runs and balls,
-  how he got out), a target and what is still required, and a `summary` in
-  the shape the result and the table read
+  the batting order (who is on strike, each man's runs and balls, how he
+  got out and off whom), the bowling figures (`record(outcome, bowler)`,
+  `bowlingLineFor`, `oversBowled`), the extras and the fall of wickets, a
+  target and what is still required, a `summary` in the shape the result and
+  the table read, and a `sheet` in the shape the scoresheet draws
 
 **The bridge**
 
@@ -388,6 +411,13 @@ compromises live in one file, and now every Matter body too.
 
 - `src/sim/types.ts` — `Outcome`, `Runs`, `Dismissal`, `Extra`, plus
   `countsAsBall` and `runsAgainstBowler`. Nothing here may import Phaser.
+- `src/sim/scorecard.ts` -- pure and serialisable. The `Scoresheet` shape
+  and `sheetFrom`, which both the sim's `InningsResult` and the human
+  innings feed; `tallyExtra` (a wide or no-ball is one plus what was run,
+  matching how both paths already score the team total; runs off a no-ball
+  are not credited to the batter on either path, so they land in extras);
+  `howOut` (`b X`, `ct b X`, `lbw b X`, `st b X`, `run out`, `not out`; no
+  fielder, neither path names one)
   Unchanged this session, on purpose
 
 **The simulation.** Pure: no Phaser, no DOM, no `Math.random`.
@@ -422,7 +452,9 @@ compromises live in one file, and now every Matter body too.
   method, home games balanced), `standings` (points, then NRR, then wins),
   `playoffs` (Q1, Eliminator, Q2, Final appearing as their inputs exist),
   `nextFixture`, `simulateFixture`, `playedFrom` for a match you batted in.
-  A tied playoff goes to the higher-placed side; there is no super over
+  `Played.sheets` (optional, so an old save still loads) holds both innings'
+  `Scoresheet`. A tied playoff goes to the higher-placed side; there is no
+  super over
 - `src/game/season/store.ts` — load/save/clear the one saved season and the
   one auction in progress
 
@@ -450,6 +482,9 @@ assembles a model each ball; nothing here knows the game.
 - `src/game/hud/moments.ts` -- `showMoment`: FOUR, SIX, WICKET, milestone,
   end of over. Never two at once
 - `src/game/hud/card.ts` -- the toss and result cards on a scrim
+- `src/game/hud/scoresheet.ts` -- `showScoresheet(spec)`: the full
+  scorecard of both innings, one `Scoresheet` and a pair of sides each.
+  `MatchScene.showSheet` and `SeasonScene.scoresheet` build the spec
 - `src/game/hud/dom.ts` -- `hudRoot`, `el`, `reducedMotion()`
 - `src/game/hud/screens/teamScreen.ts`, `seasonScreen.ts` -- the two
   pages. Handlers in, DOM out; the scenes route
@@ -940,8 +975,19 @@ trap 41).
   catches. The harness uses simulated time.
 - **A tied playoff goes to the higher-placed side.** No super over.
 - **Your own fixture's card is built by the scene** in `settle()` from the
-  human innings and the bowling map; a simulated fixture's comes from
-  `cardOf`. Two builders for one shape; if the shape grows, grow both.
+  human innings; a simulated fixture's comes from `cardOf`. Two builders for
+  one shape; if the shape grows, grow both. The sheets do not have this
+  problem: both come through `sheetFrom`.
+- **The scoresheet's tallies still live in two loops.** `simulateInnings`
+  and `HumanInnings.record` each count extras, the fall of wickets and the
+  bowler's figures; they share the helpers and the shape, not the loop.
+  A `Scorebook` both paths drive would be the right refactor, but the two
+  rotate strike slightly differently (the sim swaps on the *team* runs of a
+  ball, the human innings on the *batter's*), so folding them together
+  changes who faces which ball and moves the calibration numbers. Left alone
+  on purpose.
+- **A result from a save older than 2026-09-11 has no scoresheet** and no
+  chip on the season screen; `cards` still feeds the caps.
 - **The season is one localStorage key.** No history, no export, and a
   change to the `Season` shape needs a version bump in `store.ts` or old
   saves will be read as garbage (they are validated loosely and dropped).
