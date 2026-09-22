@@ -22,8 +22,8 @@ export function simulateMatch(home: Squad, away: Squad, rng: Rng): MatchResult {
 
   const tossDecision = rng.chance(0.75) ? "field" : "bat";
 
-  const battingFirst =
-    tossDecision === "bat" ? tossWinner : tossWinner === home ? away : home;
+  const tossLoser = tossWinner === home ? away : home;
+  const battingFirst = tossDecision === "bat" ? tossWinner : tossLoser;
   const battingSecond = battingFirst === home ? away : home;
 
   const first = simulateInnings(battingFirst, battingSecond, rng);
@@ -32,12 +32,14 @@ export function simulateMatch(home: Squad, away: Squad, rng: Rng): MatchResult {
   return { home, away, tossWinner, tossDecision, first, second, ...resultOf(first, second) };
 }
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
 export function resultOf(first: InningsSummary, second: InningsSummary): {
   winner: Squad | null; margin: string; summary: string;
 } {
   if (second.runs > first.runs) {
     const ballsLeft = OVERS * BALLS_PER_OVER - second.balls;
-    const margin = `won by ${WICKETS - second.wickets} wicket${WICKETS - second.wickets === 1 ? "" : "s"} (${ballsLeft} ball${ballsLeft === 1 ? "" : "s"} remaining)`;
+    const margin = `won by ${plural(WICKETS - second.wickets, "wicket")} (${plural(ballsLeft, "ball")} remaining)`;
     return {
       winner: second.squad,
       margin,
@@ -46,8 +48,7 @@ export function resultOf(first: InningsSummary, second: InningsSummary): {
   }
 
   if (first.runs > second.runs) {
-    const by = first.runs - second.runs;
-    const margin = `won by ${by} run${by === 1 ? "" : "s"}`;
+    const margin = `won by ${plural(first.runs - second.runs, "run")}`;
     return {
       winner: first.squad,
       margin,

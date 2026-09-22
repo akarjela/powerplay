@@ -1,7 +1,8 @@
 import { BALLS_PER_OVER, WICKETS, oversOf } from "../../sim/innings";
 import { howOut, totalExtras } from "../../sim/scorecard";
 import type { Scoresheet, SheetBatting, SheetBowling } from "../../sim/scorecard";
-import { el, hex, hudRoot, ordinal } from "./dom";
+import type { Franchise } from "../../data/franchises";
+import { button, el, fmt2, hex, hudRoot, ordinal, surname } from "./dom";
 
 export interface ScoresheetSide {
   id: string;
@@ -9,6 +10,10 @@ export interface ScoresheetSide {
   name: string;
   primary: number;
   secondary: number;
+}
+
+export function scoresheetSide(f: Franchise): ScoresheetSide {
+  return { id: f.id, code: f.code, name: f.name, primary: f.colours.primary, secondary: f.colours.secondary };
 }
 
 export interface ScoresheetInnings {
@@ -29,7 +34,6 @@ export interface ScoresheetSpec {
 
 let current: HTMLElement | undefined;
 
-const fmt2 = (n: number) => n.toFixed(2);
 const rate = (runs: number, balls: number) => (balls === 0 ? 0 : (runs / balls) * BALLS_PER_OVER);
 const strikeRate = (b: Pick<SheetBatting, "runs" | "balls">) => (b.balls === 0 ? 0 : (b.runs / b.balls) * 100);
 const economy = (w: Pick<SheetBowling, "runs" | "balls">) => rate(w.runs, w.balls);
@@ -72,14 +76,11 @@ export function showScoresheet(spec: ScoresheetSpec): void {
 
   const actions = el("div", "actions");
   for (const action of spec.actions) {
-    const button = el("button", action.primary ? "primary" : "ghost", action.label);
-    button.type = "button";
-    button.addEventListener("click", (e) => {
+    actions.append(button(action.primary ? "primary" : "ghost", action.label, (e) => {
       e.stopPropagation();
       hideScoresheet();
       action.onPick();
-    });
-    actions.append(button);
+    }));
   }
   panel.append(actions);
 
@@ -165,8 +166,12 @@ function inningsBlock(inn: ScoresheetInnings, number: number, you?: string): HTM
 
 function row(className: string, cells: string[]): HTMLElement {
   const r = el("div", `row ${className}`);
-  cells.forEach((text, i) => r.append(el("span", i === 0 ? "name" : i === 1 && cells.length === 7 ? "how" : "n", text)));
+  cells.forEach((text, i) => r.append(el("span", cellClass(i, cells.length), text)));
   return r;
 }
 
-const surname = (name: string) => name.split(" ").pop() ?? name;
+function cellClass(index: number, count: number): string {
+  if (index === 0) return "name";
+  if (index === 1 && count === 7) return "how";
+  return "n";
+}

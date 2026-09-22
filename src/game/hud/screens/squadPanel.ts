@@ -26,6 +26,18 @@ export function ratingCell(v: number | undefined): HTMLElement {
   return cell;
 }
 
+export const BAT_LABELS: readonly string[] = ["Pow", "Tec", "Agg"];
+export const BOWL_LABELS: readonly string[] = ["Pace", "Acc", "Mov", "Var"];
+
+export function ratingsTable(labels: readonly string[]): HTMLElement {
+  const table = el("div", `ratings cols-${labels.length}`);
+  const header = el("div", "row head");
+  header.append(el("span", "name"), el("span", "role"));
+  for (const label of labels) header.append(el("span", "col", label));
+  table.append(header);
+  return table;
+}
+
 export function squadPanel(f: Franchise, title: string, batting: boolean): HTMLElement {
   const panel = el("section", "panel squad");
   teamTint(panel, f.colours);
@@ -33,12 +45,8 @@ export function squadPanel(f: Franchise, title: string, batting: boolean): HTMLE
   head.append(el("span", "label", title), el("span", "who", f.name));
   panel.append(head);
 
-  const labels = batting ? ["Pow", "Tec", "Agg"] : ["Pace", "Acc", "Mov", "Var"];
-  const table = el("div", `ratings cols-${labels.length}`);
-  const header = el("div", "row head");
-  header.append(el("span", "name"), el("span", "role"));
-  for (const l of labels) header.append(el("span", "col", l));
-  table.append(header);
+  const labels = batting ? BAT_LABELS : BOWL_LABELS;
+  const table = ratingsTable(labels);
 
   const rows: { name: string; values: number[]; role: string }[] = batting
     ? f.squad.batters.map((b: Batter, i) => ({

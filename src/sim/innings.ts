@@ -4,7 +4,7 @@ import { bowl, phaseOf } from "./delivery";
 import type { Delivery } from "./delivery";
 import { playBall } from "./outcome";
 import type { Outcome, Dismissal } from "./types";
-import { countsAsBall, runsAgainstBowler } from "./types";
+import { countsAsBall, runsAgainstBowler, teamRuns } from "./types";
 import { emptyExtras, tallyExtra } from "./scorecard";
 import type { Extras, FallOfWicket } from "./scorecard";
 
@@ -71,9 +71,6 @@ export interface InningsResult extends InningsSummary {
 export interface InningsOptions {
   target?: number;
 }
-
-const teamRuns = (outcome: Outcome) =>
-  outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
 
 const batterRuns = (outcome: Outcome) => (outcome.extra ? 0 : outcome.runs);
 
@@ -152,10 +149,11 @@ export function simulateInnings(
       );
 
       const scored = teamRuns(outcome);
+      const conceded = runsAgainstBowler(outcome);
       runs += scored;
       tallyExtra(extras, outcome);
-      concededThisOver += runsAgainstBowler(outcome);
-      figures.runs += runsAgainstBowler(outcome);
+      concededThisOver += conceded;
+      figures.runs += conceded;
 
       if (countsAsBall(outcome)) {
         legal++;
@@ -171,10 +169,12 @@ export function simulateInnings(
 
       if (outcome.wicket) {
         wickets++;
-        figures.wickets += chargeableToBowler(outcome.wicket) ? 1 : 0;
         strikerLine.dismissal = outcome.wicket;
         strikerLine.how = outcome.description;
-        if (chargeableToBowler(outcome.wicket)) strikerLine.bowler = bowler.name;
+        if (chargeableToBowler(outcome.wicket)) {
+          figures.wickets++;
+          strikerLine.bowler = bowler.name;
+        }
         fallOfWickets.push({ wicket: wickets, runs, batter: striker.id, name: striker.name, balls });
       }
 

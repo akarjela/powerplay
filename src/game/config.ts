@@ -22,7 +22,6 @@ export const CANVAS = { width: 1280, height: 720 };
 
 export const GROUND_Y = 600;
 
-export const HORIZON_Y = GROUND_Y - 95;
 export const BATTER_X = 160;
 export const BOWLER_X = BATTER_X + PITCH_LENGTH;
 

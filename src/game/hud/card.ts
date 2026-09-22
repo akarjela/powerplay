@@ -1,4 +1,4 @@
-import { el, hex, hudRoot } from "./dom";
+import { button, el, hex, hudRoot } from "./dom";
 
 export interface CardSpec {
   title: string;
@@ -25,14 +25,11 @@ export function showCard(spec: CardSpec, onClick: () => void): void {
   if (spec.choices && spec.choices.length > 0) {
     const row = el("div", "choices");
     for (const choice of spec.choices) {
-      const button = el("button", choice.primary ? "primary" : "ghost", choice.label);
-      button.type = "button";
-      button.addEventListener("click", (e) => {
+      row.append(button(choice.primary ? "primary" : "ghost", choice.label, (e) => {
         e.stopPropagation();
         hideCard();
         choice.onPick();
-      });
-      row.append(button);
+      }));
     }
     card.append(row);
     scrim.addEventListener("click", (e) => e.stopPropagation());

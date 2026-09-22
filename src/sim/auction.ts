@@ -333,5 +333,10 @@ export function rosters(a: Auction, nameOf: (id: string) => string): Record<stri
   return Object.fromEntries(a.squads.map((id) => [id, toSquad(owned(a, id), id, nameOf(id))]));
 }
 
-export const upcoming = (a: Auction, n: number): PoolPlayer[] =>
-  a.stage === "bidding" ? a.pool.slice(a.lot + 1, a.lot + 1 + n) : a.stage === "watch" ? a.pool.slice(0, n) : [];
+export function upcoming(a: Auction, n: number): PoolPlayer[] {
+  switch (a.stage) {
+    case "bidding": return a.pool.slice(a.lot + 1, a.lot + 1 + n);
+    case "watch": return a.pool.slice(0, n);
+    case "done": return [];
+  }
+}

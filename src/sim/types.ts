@@ -25,7 +25,11 @@ export function countsAsBall(outcome: Outcome): boolean {
   return outcome.extra !== "wide" && outcome.extra !== "no-ball";
 }
 
+export function teamRuns(outcome: Outcome): number {
+  return outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
+}
+
 export function runsAgainstBowler(outcome: Outcome): number {
   if (outcome.extra === "bye" || outcome.extra === "leg-bye") return 0;
-  return outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
+  return teamRuns(outcome);
 }

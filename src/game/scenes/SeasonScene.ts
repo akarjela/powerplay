@@ -8,8 +8,7 @@ import {
 import type { Fixture, Played, Season } from "../../sim/tournament";
 import { makeRng } from "../../sim/rng";
 import { hideFate, showFate } from "../hud/fateCard";
-import { hideScoresheet, showScoresheet } from "../hud/scoresheet";
-import type { ScoresheetSide } from "../hud/scoresheet";
+import { hideScoresheet, scoresheetSide, showScoresheet } from "../hud/scoresheet";
 import { STAGE_NAME, SeasonScreen } from "../hud/screens/seasonScreen";
 
 export class SeasonScene extends Phaser.Scene {
@@ -84,20 +83,22 @@ export class SeasonScene extends Phaser.Scene {
   private scoresheet(played: Played): void {
     if (!played.sheets) return;
     const fixture = fixtureById(this.season, played.fixtureId);
-    const side = (id: string): ScoresheetSide => {
-      const f = franchiseById(id);
-      return { id: f.id, code: f.code, name: f.name, primary: f.colours.primary, secondary: f.colours.secondary };
-    };
+    const side = (id: string) => scoresheetSide(franchiseById(id));
     const first = { sheet: played.sheets.first, batting: side(played.first.squad), bowling: side(played.second.squad) };
     const second = { sheet: played.sheets.second, batting: side(played.second.squad), bowling: side(played.first.squad), target: played.first.runs + 1 };
-    const mine = involvesYou(this.season, fixture);
     const stage = fixture.stage === "league" ? `Round ${fixture.round}` : STAGE_NAME[fixture.stage];
+    let tone: "won" | "lost" | "neutral" | undefined;
+    if (involvesYou(this.season, fixture)) {
+      if (played.winner === this.season.you) tone = "won";
+      else if (played.winner) tone = "lost";
+      else tone = "neutral";
+    }
     showScoresheet({
       title: `${stage}: ${franchiseById(fixture.home).name} v ${franchiseById(fixture.away).name}`,
       result: played.summary,
       innings: [first, second],
       you: this.season.you,
-      tone: mine ? (played.winner === this.season.you ? "won" : played.winner ? "lost" : "neutral") : undefined,
+      tone,
       actions: [{ label: "Close", primary: true, onPick: () => undefined }],
     });
   }

@@ -69,14 +69,29 @@ export function relativeToPath(point: PlanPoint, bearing: Bearing): { offLine: n
   };
 }
 
+interface Region {
+  within: number;
+  legDeep: string;
+  legNear: string;
+  offDeep: string;
+  offNear: string;
+}
+
+const STRAIGHT = "straight back past the bowler";
+
+const REGIONS: readonly Region[] = [
+  { within: 12, legDeep: "long-on", legNear: STRAIGHT, offDeep: "long-off", offNear: STRAIGHT },
+  { within: 35, legDeep: "long-on", legNear: "mid-on", offDeep: "long-off", offNear: "mid-off" },
+  { within: 65, legDeep: "deep mid-wicket", legNear: "mid-wicket", offDeep: "deep cover", offNear: "cover" },
+  { within: 100, legDeep: "deep square leg", legNear: "square leg", offDeep: "deep point", offNear: "point" },
+  { within: Infinity, legDeep: "deep fine leg", legNear: "fine leg", offDeep: "deep third man", offNear: "third man" },
+];
+
 export function regionName(bearing: Bearing, distanceM: number): string {
   const deep = distanceM >= 40;
-  const leg = bearing >= 0;
   const angle = Math.abs(bearing);
+  const region = REGIONS.find((r) => angle <= r.within)!;
 
-  if (angle <= 12) return deep ? (leg ? "long-on" : "long-off") : "straight back past the bowler";
-  if (angle <= 35) return leg ? (deep ? "long-on" : "mid-on") : deep ? "long-off" : "mid-off";
-  if (angle <= 65) return leg ? (deep ? "deep mid-wicket" : "mid-wicket") : deep ? "deep cover" : "cover";
-  if (angle <= 100) return leg ? (deep ? "deep square leg" : "square leg") : deep ? "deep point" : "point";
-  return leg ? (deep ? "deep fine leg" : "fine leg") : deep ? "deep third man" : "third man";
+  if (bearing >= 0) return deep ? region.legDeep : region.legNear;
+  return deep ? region.offDeep : region.offNear;
 }

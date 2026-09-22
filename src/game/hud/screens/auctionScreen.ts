@@ -4,8 +4,8 @@ import {
   roleOf, skipToStar, star, tierOf, toSquad, upcoming, youCanBid,
 } from "../../../sim/auction";
 import type { Auction, PoolPlayer } from "../../../sim/auction";
-import { el, hudRoot, teamTint, trophyMark } from "../dom";
-import { bowlerRole, ratingCell } from "./squadPanel";
+import { button, el, hudRoot, teamTint, trophyMark } from "../dom";
+import { BAT_LABELS, BOWL_LABELS, bowlerRole, ratingCell, ratingsTable } from "./squadPanel";
 
 export interface AuctionScreenHandlers {
   onChange: (auction: Auction) => void;
@@ -58,10 +58,7 @@ export class AuctionScreen {
       stat("Purse", cr(a.purse[a.you]), "cr left"),
       stat("Squad", `${mine.length}/${SQUAD_SIZE}`, `${mine.filter((p) => p.bowler).length} bowl`),
     );
-    const teams = el("button", "ghost", "Teams");
-    teams.type = "button";
-    teams.addEventListener("click", () => this.handlers.onTeams());
-    head.append(teams);
+    head.append(button("ghost", "Teams", () => this.handlers.onTeams()));
     this.body.append(head);
 
     const grid = el("div", "auction-grid");
@@ -82,10 +79,8 @@ export class AuctionScreen {
     const from = franchiseById(p.from);
     const row = el("div", `lot-row ${isStarred(a, p.id) ? "is-starred" : ""}`);
     teamTint(row, from.colours);
-    const s = el("button", "star", isStarred(a, p.id) ? "Starred" : "Star");
-    s.type = "button";
+    const s = button("star", isStarred(a, p.id) ? "Starred" : "Star", () => this.set(star(a, p.id)));
     s.setAttribute("aria-pressed", String(isStarred(a, p.id)));
-    s.addEventListener("click", () => this.set(star(a, p.id)));
     row.append(
       s,
       el("span", "flag"),
@@ -112,10 +107,7 @@ export class AuctionScreen {
       for (const p of set) panel.append(this.playerRow(p));
     }
     const row = el("div", "actions");
-    const go = el("button", "primary", "Open the auction");
-    go.type = "button";
-    go.addEventListener("click", () => this.set(open(a)));
-    row.append(go, this.abandonButton());
+    row.append(button("primary", "Open the auction", () => this.set(open(a))), this.abandonButton());
     panel.append(row);
     return panel;
   }
@@ -161,17 +153,13 @@ export class AuctionScreen {
 
     const can = youCanBid(a);
     const row = el("div", "actions");
-    const b = el("button", "primary", `Bid ${cr(nextPrice(a))}`);
-    b.type = "button";
+    const b = button("primary", `Bid ${cr(nextPrice(a))}`, () => this.set(bid(a)));
     b.disabled = !can.ok;
-    b.addEventListener("click", () => this.set(bid(a)));
-    const ps = el("button", "ghost", sold ? `Let ${holder!.code} have him` : "Pass");
-    ps.type = "button";
-    ps.addEventListener("click", () => this.set(pass(a)));
-    const s = el("button", `ghost star ${isStarred(a, p.id) ? "is-on" : ""}`, isStarred(a, p.id) ? "Starred" : "Star");
-    s.type = "button";
-    s.addEventListener("click", () => this.set(star(a, p.id)));
-    row.append(b, ps, s);
+    row.append(
+      b,
+      button("ghost", sold ? `Let ${holder!.code} have him` : "Pass", () => this.set(pass(a))),
+      button(`ghost star ${isStarred(a, p.id) ? "is-on" : ""}`, isStarred(a, p.id) ? "Starred" : "Star", () => this.set(star(a, p.id))),
+    );
     panel.append(row);
     if (!can.ok && can.why) panel.append(el("p", "note", can.why));
 
@@ -199,13 +187,9 @@ export class AuctionScreen {
     if (a.stage === "bidding") {
       const row = el("div", "actions");
       const nextStar = a.pool.slice(a.lot + 1).some((p) => isStarred(a, p.id));
-      const skip = el("button", "ghost", "Skip to my next star");
-      skip.type = "button";
+      const skip = button("ghost", "Skip to my next star", () => this.set(skipToStar(pass(a))));
       skip.disabled = !nextStar;
-      skip.addEventListener("click", () => this.set(skipToStar(pass(a))));
-      const rest = el("button", "danger", this.armed ? `Sure? Pass on all ${a.pool.length - a.lot} lots` : "Pass on the rest");
-      rest.type = "button";
-      rest.addEventListener("click", () => {
+      const rest = button("danger", this.armed ? `Sure? Pass on all ${a.pool.length - a.lot} lots` : "Pass on the rest", () => {
         if (this.armed) this.set(passAll(a));
         else {
           this.armed = true;
@@ -268,11 +252,7 @@ export class AuctionScreen {
     panel.append(el("span", "label", "Auction complete"), el("div", "big", you.name));
     panel.append(el("div", "line", `Eleven bought for ${cr(PURSE - a.purse[a.you])} cr. ${a.filled.filter((id) => a.sold[id].to === a.you).length} came unsold at base.`));
 
-    const table = el("div", "ratings cols-3");
-    const header = el("div", "row head");
-    header.append(el("span", "name"), el("span", "role"));
-    for (const l of ["Pow", "Tec", "Agg"]) header.append(el("span", "col", l));
-    table.append(header);
+    const table = ratingsTable(BAT_LABELS);
     squad.batters.forEach((b, i) => {
       const row = el("div", "row");
       const bowls = squad.bowlers.find((w) => w.id === b.id);
@@ -286,19 +266,13 @@ export class AuctionScreen {
     if (partTimers > 0) panel.append(el("div", "line warn", `${partTimers} part-timer${partTimers === 1 ? "" : "s"} will have to bowl.`));
 
     const row = el("div", "actions");
-    const go = el("button", "primary", "Start season");
-    go.type = "button";
-    go.addEventListener("click", () => this.handlers.onStartSeason(a));
-    row.append(go, this.abandonButton());
+    row.append(button("primary", "Start season", () => this.handlers.onStartSeason(a)), this.abandonButton());
     panel.append(row);
     return panel;
   }
 
   private abandonButton(): HTMLButtonElement {
-    const drop = el("button", "danger", "Abandon");
-    drop.type = "button";
-    drop.addEventListener("click", () => this.handlers.onAbandon());
-    return drop;
+    return button("danger", "Abandon", () => this.handlers.onAbandon());
   }
 
   destroy(): void {
@@ -321,22 +295,16 @@ function roleLabel(p: PoolPlayer): string {
 
 function ratings(p: PoolPlayer): HTMLElement {
   const wrap = el("div", "lot-ratings");
-  const bat = el("div", "ratings cols-3");
-  const bh = el("div", "row head");
-  bh.append(el("span", "name"), el("span", "role"));
-  for (const l of ["Pow", "Tec", "Agg"]) bh.append(el("span", "col", l));
+  const bat = ratingsTable(BAT_LABELS);
   const br = el("div", "row");
   br.append(el("span", "name", "Batting"), el("span", "role"), ratingCell(p.batter.power), ratingCell(p.batter.technique), ratingCell(p.batter.aggression));
-  bat.append(bh, br);
+  bat.append(br);
   wrap.append(bat);
   if (p.bowler) {
-    const bowl = el("div", "ratings cols-4");
-    const wh = el("div", "row head");
-    wh.append(el("span", "name"), el("span", "role"));
-    for (const l of ["Pace", "Acc", "Mov", "Var"]) wh.append(el("span", "col", l));
+    const bowl = ratingsTable(BOWL_LABELS);
     const wr = el("div", "row");
     wr.append(el("span", "name", "Bowling"), el("span", "role", bowlerRole(p.bowler.pace)), ratingCell(p.bowler.pace), ratingCell(p.bowler.accuracy), ratingCell(p.bowler.movement), ratingCell(p.bowler.variation));
-    bowl.append(wh, wr);
+    bowl.append(wr);
     wrap.append(bowl);
   }
   return wrap;

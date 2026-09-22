@@ -5,7 +5,7 @@ import {
   caps, champion, involvesYou, isOver, nextFixture, playoffs, standings,
 } from "../../../sim/tournament";
 import type { Fixture, Played, Season } from "../../../sim/tournament";
-import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
+import { button, el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
 import { squadPanel } from "./squadPanel";
 
 export interface SeasonScreenHandlers {
@@ -46,10 +46,7 @@ export class SeasonScreen {
     mark.append(trophyMark("mark"), el("span", undefined, "Season"));
     head.append(mark);
     head.append(el("div", "who", you.name));
-    const teams = el("button", "ghost", "Teams");
-    teams.type = "button";
-    teams.addEventListener("click", () => this.handlers.onTeams());
-    head.append(teams);
+    head.append(button("ghost", "Teams", () => this.handlers.onTeams()));
     this.body.append(head);
 
     const grid = el("div", "season-grid");
@@ -103,11 +100,8 @@ export class SeasonScreen {
       el("div", "big", winner.name),
       el("div", "line", winner.id === season.you ? "Your season. Take a bow." : `${franchiseById(season.you).name} finished ${ordinal(place)} in the league.`),
     );
-    const fresh = el("button", "primary", "New season");
-    fresh.type = "button";
-    fresh.addEventListener("click", () => this.handlers.onNewSeason());
     const row = el("div", "actions");
-    row.append(fresh);
+    row.append(button("primary", "New season", () => this.handlers.onNewSeason()));
     panel.append(row);
     return panel;
   }
@@ -136,21 +130,15 @@ export class SeasonScreen {
 
     const row = el("div", "actions");
     if (yours) {
-      const play = el("button", "primary", "Play");
-      play.type = "button";
-      play.addEventListener("click", () => this.handlers.onPlay(fixture));
-      const sim = el("button", "ghost", "Simulate instead");
-      sim.type = "button";
-      sim.addEventListener("click", () => this.handlers.onSimulate([fixture]));
-      row.append(play, sim);
+      row.append(
+        button("primary", "Play", () => this.handlers.onPlay(fixture)),
+        button("ghost", "Simulate instead", () => this.handlers.onSimulate([fixture])),
+      );
     } else {
-      const sim = el("button", "primary", "Simulate");
-      sim.type = "button";
-      sim.addEventListener("click", () => this.handlers.onSimulate([fixture]));
-      const toYou = el("button", "ghost", "Sim to my next match");
-      toYou.type = "button";
-      toYou.addEventListener("click", () => this.handlers.onSimulateToYou());
-      row.append(sim, toYou);
+      row.append(
+        button("primary", "Simulate", () => this.handlers.onSimulate([fixture])),
+        button("ghost", "Sim to my next match", () => this.handlers.onSimulateToYou()),
+      );
     }
     panel.append(row);
 
@@ -181,12 +169,7 @@ export class SeasonScreen {
       );
       const foot = el("div", "foot");
       foot.append(el("div", "summary", r.summary));
-      if (r.sheets) {
-        const sheet = el("button", "star", "Scoresheet");
-        sheet.type = "button";
-        sheet.addEventListener("click", () => this.handlers.onScoresheet(r));
-        foot.append(sheet);
-      }
+      if (r.sheets) foot.append(button("star", "Scoresheet", () => this.handlers.onScoresheet(r)));
       item.append(line, foot);
       panel.append(item);
     }

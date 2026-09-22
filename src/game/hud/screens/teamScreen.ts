@@ -2,12 +2,24 @@ import { FRANCHISES } from "../../../data/franchises";
 import type { Franchise } from "../../../data/franchises";
 import { nextFixture, standings } from "../../../sim/tournament";
 import type { Fixture, Season } from "../../../sim/tournament";
-import { el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
+import { button, el, hudRoot, ordinal, teamTint, trophyMark } from "../dom";
 import { squadPanel } from "./squadPanel";
 import type { Auction } from "../../../sim/auction";
 import { SQUAD_SIZE, owned } from "../../../sim/auction";
 
 export type Mode = "quick" | "season" | "auction";
+
+const HINT: Record<Mode, string> = {
+  quick: "Pick the side you bat for, then the side you face.",
+  season: "Pick the franchise you carry through the season.",
+  auction: "Pick the franchise whose purse you run. Every side rebuilds its eleven at the auction.",
+};
+
+const ACTION: Record<Mode, string> = {
+  quick: "Play",
+  season: "Start season",
+  auction: "Start auction",
+};
 
 export interface TeamScreenHandlers {
   savedSeason: () => Season | null;
@@ -48,9 +60,7 @@ export class TeamScreen {
     head.append(mark);
     const tabs = el("div", "tabs");
     for (const [mode, label] of [["quick", "Quick match"], ["season", "Season"], ["auction", "Auction"]] as const) {
-      const b = el("button", "tab", label);
-      b.type = "button";
-      b.addEventListener("click", () => {
+      const b = button("tab", label, () => {
         this.mode = mode;
         this.batting = undefined;
         this.bowling = undefined;
@@ -62,16 +72,13 @@ export class TeamScreen {
     head.append(tabs);
     this.hint = el("div", "hint");
     head.append(this.hint);
-    this.action = el("button", "action-primary");
-    this.action.type = "button";
-    this.action.addEventListener("click", () => this.go());
+    this.action = button("action-primary", "", () => this.go());
     head.append(this.action);
     screen.append(head);
 
     const grid = el("div", "franchises");
     for (const f of FRANCHISES) {
-      const card = el("button", "franchise");
-      card.type = "button";
+      const card = button("franchise", "", () => this.pick(f));
       teamTint(card, f.colours);
       const tag = el("span", "tag");
       card.append(
@@ -81,7 +88,6 @@ export class TeamScreen {
         el("span", "ground", f.ground),
         tag,
       );
-      card.addEventListener("click", () => this.pick(f));
       this.cards.set(f.id, { card, tag });
       grid.append(card);
     }
@@ -123,11 +129,7 @@ export class TeamScreen {
     this.screen.classList.toggle("is-tinted", Boolean(lead));
     if (lead) teamTint(this.screen, lead.colours);
     for (const [mode, b] of this.tabs) b.classList.toggle("is-on", mode === this.mode);
-    this.hint.textContent = this.mode === "quick"
-      ? "Pick the side you bat for, then the side you face."
-      : this.mode === "season"
-        ? "Pick the franchise you carry through the season."
-        : "Pick the franchise whose purse you run. Every side rebuilds its eleven at the auction.";
+    this.hint.textContent = HINT[this.mode];
 
     for (const f of FRANCHISES) {
       const { card, tag } = this.cards.get(f.id)!;
@@ -145,7 +147,7 @@ export class TeamScreen {
     else this.quickPanels();
 
     const ready = this.mode === "quick" ? Boolean(this.batting && this.bowling) : Boolean(this.batting);
-    this.action.textContent = this.mode === "quick" ? "Play" : this.mode === "season" ? "Start season" : "Start auction";
+    this.action.textContent = ACTION[this.mode];
     this.action.hidden = !ready;
   }
 
@@ -183,27 +185,20 @@ export class TeamScreen {
     const panel = el("section", "panel saved");
     teamTint(panel, you.colours);
     const mine = owned(saved, saved.you).length;
-    const line = saved.stage === "done"
-      ? "The auction is over. Your eleven is waiting."
-      : saved.stage === "watch"
-        ? "The pool is open for starring; no lot has been called."
-        : `Lot ${saved.lot + 1} of ${saved.pool.length}. ${mine} of ${SQUAD_SIZE} bought, ${saved.purse[saved.you].toFixed(2)} cr left.`;
+    const line = auctionStageLine(saved, mine);
     panel.append(
       el("span", "label", "Auction in progress"),
       el("div", "big", you.name),
       el("div", "line", line),
     );
-    const go = el("button", "primary", "Continue");
-    go.type = "button";
-    go.addEventListener("click", () => this.handlers.onContinueAuction());
-    const drop = el("button", "danger", "Abandon");
-    drop.type = "button";
-    drop.addEventListener("click", () => {
-      this.handlers.onAbandonAuction();
-      this.refresh();
-    });
     const row = el("div", "actions");
-    row.append(go, drop);
+    row.append(
+      button("primary", "Continue", () => this.handlers.onContinueAuction()),
+      button("danger", "Abandon", () => {
+        this.handlers.onAbandonAuction();
+        this.refresh();
+      }),
+    );
     panel.append(row);
     if (this.batting) panel.append(el("div", "line warn", `Starting a new auction as ${this.batting.name} replaces this one.`));
     return panel;
@@ -222,17 +217,14 @@ export class TeamScreen {
       el("div", "line", `${ordinal(place)} after ${table[place - 1].played} games. ${whatIsNext(nextFixture(saved))}`),
     );
 
-    const go = el("button", "primary", "Continue");
-    go.type = "button";
-    go.addEventListener("click", () => this.handlers.onContinueSeason());
-    const drop = el("button", "danger", "Abandon");
-    drop.type = "button";
-    drop.addEventListener("click", () => {
-      this.handlers.onAbandonSeason();
-      this.refresh();
-    });
     const row = el("div", "actions");
-    row.append(go, drop);
+    row.append(
+      button("primary", "Continue", () => this.handlers.onContinueSeason()),
+      button("danger", "Abandon", () => {
+        this.handlers.onAbandonSeason();
+        this.refresh();
+      }),
+    );
     panel.append(row);
 
     if (this.batting) panel.append(el("div", "line warn", `Starting a new season as ${this.batting.name} replaces this one.`));
@@ -241,6 +233,17 @@ export class TeamScreen {
 
   destroy(): void {
     this.screen.remove();
+  }
+}
+
+function auctionStageLine(saved: Auction, owned: number): string {
+  switch (saved.stage) {
+    case "done":
+      return "The auction is over. Your eleven is waiting.";
+    case "watch":
+      return "The pool is open for starring; no lot has been called.";
+    case "bidding":
+      return `Lot ${saved.lot + 1} of ${saved.pool.length}. ${owned} of ${SQUAD_SIZE} bought, ${saved.purse[saved.you].toFixed(2)} cr left.`;
   }
 }
 

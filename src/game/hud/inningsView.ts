@@ -1,9 +1,9 @@
 import type { BallEvent, InningsResult } from "../../sim/innings";
 import { BALLS_PER_OVER, OVERS, oversOf } from "../../sim/innings";
-import { countsAsBall, runsAgainstBowler } from "../../sim/types";
+import { countsAsBall, runsAgainstBowler, teamRuns } from "../../sim/types";
 import type { Outcome } from "../../sim/types";
 import type { BallMark } from "../humanInnings";
-import { ballChip, el, hex, hudRoot } from "./dom";
+import { ballChip, button, el, hex, hudRoot } from "./dom";
 import { clearMoment, showMoment } from "./moments";
 
 export interface InningsViewSides {
@@ -77,16 +77,12 @@ export class InningsView {
     this.n.call = el("div", "call-line", `${sides.bowling.name} take the field.`);
 
     const controls = el("div", "controls");
-    this.speedButton = el("button", "ghost", "Speed 1×");
-    this.speedButton.type = "button";
-    this.speedButton.addEventListener("click", (e) => {
+    this.speedButton = button("ghost", "Speed 1×", (e) => {
       e.stopPropagation();
       this.fast = !this.fast;
       this.speedButton.textContent = this.fast ? "Speed 3×" : "Speed 1×";
     });
-    const skip = el("button", "primary", "Skip to the end");
-    skip.type = "button";
-    skip.addEventListener("click", (e) => {
+    const skip = button("primary", "Skip to the end", (e) => {
       e.stopPropagation();
       this.finish();
     });
@@ -135,7 +131,7 @@ export class InningsView {
       this.overRuns = 0;
     }
     this.over.push(markFor(o));
-    this.overRuns += o.runs + (o.extra === "wide" || o.extra === "no-ball" ? 1 : 0);
+    this.overRuns += teamRuns(o);
 
     const b = this.tally(this.batters, event.striker.id, { runs: 0, balls: 0 });
     if (legal) b.balls++;

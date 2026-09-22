@@ -21,7 +21,22 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+export function button(
+  className: string | undefined,
+  label: string,
+  onClick: (event: MouseEvent) => void,
+): HTMLButtonElement {
+  const node = el("button", className, label);
+  node.type = "button";
+  node.addEventListener("click", onClick);
+  return node;
+}
+
 export const hex = (colour: number) => `#${colour.toString(16).padStart(6, "0")}`;
+
+export const fmt2 = (n: number) => n.toFixed(2);
+
+export const surname = (name: string) => name.split(" ").pop() ?? name;
 
 export function ballChip(mark: BallMark): HTMLSpanElement {
   const kind = mark.kind === "boundary" && mark.label === "6" ? "six" : mark.kind;

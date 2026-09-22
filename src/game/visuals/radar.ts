@@ -18,10 +18,10 @@ export class Radar {
   private readonly wheel: Phaser.GameObjects.Graphics;
   private readonly ball: Phaser.GameObjects.Arc;
 
-  constructor(scene: Phaser.Scene, cx: number, cy: number, radiusPx: number) {
+  constructor(scene: Phaser.Scene, radiusPx: number) {
     this.k = radiusPx / BOUNDARY_M;
 
-    this.root = scene.add.container(cx, cy).setScrollFactor(0).setDepth(1030);
+    this.root = scene.add.container(0, 0).setScrollFactor(0).setDepth(1030);
     this.ground = scene.add.graphics();
     this.wheel = scene.add.graphics();
     this.men = scene.add.graphics();

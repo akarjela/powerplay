@@ -1,6 +1,6 @@
 import type { BallMark } from "../humanInnings";
 import type { Stance } from "../config";
-import { ballChip, el, hex, hudRoot } from "./dom";
+import { ballChip, button, el, fmt2, hex, hudRoot, surname } from "./dom";
 
 export interface ScoreboardModel {
   team: { code: string; primary: number; secondary: number };
@@ -28,9 +28,6 @@ export interface ScoreboardModel {
 
 const STANCE_TEXT: Record<Stance, string> = { front: "Front foot", back: "Back foot", neutral: "No stance" };
 const BALLS_SHOWN = 6;
-
-const fmt2 = (n: number) => n.toFixed(2);
-const surname = (name: string) => name.split(" ").pop() ?? name;
 
 export class Scoreboard {
   private readonly root: HTMLElement;
@@ -114,9 +111,7 @@ export class Scoreboard {
     strip.appendChild(bowler);
 
     const action = el("div", "cell action");
-    this.button = el("button");
-    this.button.type = "button";
-    this.button.addEventListener("click", (e) => {
+    this.button = button(undefined, "", (e) => {
       e.stopPropagation();
       onAction();
     });
@@ -181,7 +176,9 @@ export class Scoreboard {
       this.rates.classList.add(ahead ? "is-ahead" : "is-behind");
       const pressure = !isPar && rrr > 12;
       this.rates.classList.toggle("is-pressure", pressure);
-      this.n.ratesLabel.textContent = pressure ? "Pressure" : isPar ? "Against par" : "Run rate";
+      if (pressure) this.n.ratesLabel.textContent = "Pressure";
+      else if (isPar) this.n.ratesLabel.textContent = "Against par";
+      else this.n.ratesLabel.textContent = "Run rate";
     } else {
       this.n.diff.textContent = "";
       this.n.rrr.textContent = "";

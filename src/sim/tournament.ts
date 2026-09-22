@@ -1,7 +1,7 @@
 import type { Rng } from "./rng";
 import type { Squad } from "./player";
 import { simulateMatch, netRunRateInnings, resultOf } from "./match";
-import type { InningsResult, InningsSummary } from "./innings";
+import type { BattingLine, BowlingLine, InningsResult, InningsSummary } from "./innings";
 import { sheetOf } from "./scorecard";
 import type { Scoresheet } from "./scorecard";
 
@@ -253,15 +253,24 @@ export function playedFrom(
   };
 }
 
-export function cardOf(innings: InningsResult, bowlingSquad: string): InningsCard {
+export function cardFrom(
+  batting: BattingLine[],
+  bowling: BowlingLine[],
+  battingSquad: string,
+  bowlingSquad: string,
+): InningsCard {
   return {
-    batting: innings.batting.filter((l) => l.balls > 0 || l.runs > 0).map((l) => ({
-      id: l.batter.id, name: l.batter.name, squad: innings.squad.id, runs: l.runs, balls: l.balls,
+    batting: batting.filter((l) => l.balls > 0 || l.runs > 0).map((l) => ({
+      id: l.batter.id, name: l.batter.name, squad: battingSquad, runs: l.runs, balls: l.balls,
     })),
-    bowling: innings.bowling.filter((l) => l.balls > 0).map((l) => ({
+    bowling: bowling.filter((l) => l.balls > 0).map((l) => ({
       id: l.bowler.id, name: l.bowler.name, squad: bowlingSquad, wickets: l.wickets, runs: l.runs, balls: l.balls,
     })),
   };
+}
+
+export function cardOf(innings: InningsResult, bowlingSquad: string): InningsCard {
+  return cardFrom(innings.batting, innings.bowling, innings.squad.id, bowlingSquad);
 }
 
 export interface CapHolders {

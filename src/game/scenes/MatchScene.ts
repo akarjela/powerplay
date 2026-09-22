@@ -24,8 +24,7 @@ import type { ScoreboardModel } from "../hud/scoreboard";
 import { clearMoment, showMoment } from "../hud/moments";
 import { hideCard, showCard } from "../hud/card";
 import type { CardSpec } from "../hud/card";
-import { hideScoresheet, showScoresheet } from "../hud/scoresheet";
-import type { ScoresheetSide } from "../hud/scoresheet";
+import { hideScoresheet, scoresheetSide, showScoresheet } from "../hud/scoresheet";
 import { InningsView } from "../hud/inningsView";
 import { reducedMotion } from "../hud/dom";
 import type { Outcome } from "../../sim/types";
@@ -45,8 +44,7 @@ import { unit } from "../../sim/player";
 import { FRANCHISES, franchiseById, franchiseIn } from "../../data/franchises";
 import type { Franchise } from "../../data/franchises";
 import { loadSeason, saveSeason } from "../season/store";
-import { cardOf, fixtureById, playedFrom, recordResult } from "../../sim/tournament";
-import type { InningsCard } from "../../sim/tournament";
+import { cardFrom, cardOf, fixtureById, playedFrom, recordResult } from "../../sim/tournament";
 import type { Fixture, Season } from "../../sim/tournament";
 
 const LINE_ACROSS: Record<Line, number> = { leg: 0.3, stumps: 0, off: -0.3, "wide-off": -0.8 };
@@ -58,7 +56,7 @@ const PLAYOFF_STAGE = {
   qualifier1: "Qualifier 1", eliminator: "Eliminator", qualifier2: "Qualifier 2", final: "The final",
 } as const;
 
-export interface MatchStart {
+interface MatchStart {
   bat?: string;
   bowl?: string;
   fixtureId?: string;
@@ -197,7 +195,7 @@ export class MatchScene extends Phaser.Scene {
     this.batGfx = makeBat(this).setDepth(depthFor(0, 2));
     this.takeGuard(this.innings.atTheCrease[0]?.batter ?? this.sides.you.squad.batters[0]);
     this.ballSprite = new BallSprite(this);
-    this.radar = new Radar(this, 0, 0, 70);
+    this.radar = new Radar(this, 70);
     this.radar.setField(this.field);
     this.scoreboard = new Scoreboard(() => this.onClick());
 
@@ -271,7 +269,6 @@ export class MatchScene extends Phaser.Scene {
     for (const key of stale) if (!this.bakedKeys.includes(key)) this.textures.remove(key);
     for (const g of this.stumps) g.destroy();
     this.stumps = [
-
       drawStumps(this, this.camera, BATTER_X, depthFor(0, 0.5)),
       drawStumps(this, this.camera, BOWLER_X, depthFor(0, -0.5)),
     ];
@@ -429,14 +426,7 @@ export class MatchScene extends Phaser.Scene {
     ];
 
     if (this.season && this.fixture) {
-      const yourCard: InningsCard = {
-        batting: this.innings.battingLines.filter((l) => l.balls > 0 || l.runs > 0).map((l) => ({
-          id: l.batter.id, name: l.batter.name, squad: you.id, runs: l.runs, balls: l.balls,
-        })),
-        bowling: this.innings.bowlingLines.filter((l) => l.balls > 0).map((l) => ({
-          id: l.bowler.id, name: l.bowler.name, squad: them.id, wickets: l.wickets, runs: l.runs, balls: l.balls,
-        })),
-      };
+      const yourCard = cardFrom(this.innings.battingLines, this.innings.bowlingLines, you.id, them.id);
       const theirCard = cardOf(theirs, you.id);
       const cards = this.youBatFirst ? { first: yourCard, second: theirCard } : { first: theirCard, second: yourCard };
       const yourSheet = this.innings.sheet;
@@ -466,11 +456,8 @@ export class MatchScene extends Phaser.Scene {
 
   private showSheet(summary: string, tone: "won" | "lost" | "neutral", back: string): void {
     const { you, them } = this.sides;
-    const side = (f: Franchise): ScoresheetSide => ({
-      id: f.id, code: f.code, name: f.name, primary: f.colours.primary, secondary: f.colours.secondary,
-    });
-    const yours = { sheet: this.innings.sheet, batting: side(you), bowling: side(them) };
-    const theirs = { sheet: sheetOf(this.theirInnings!), batting: side(them), bowling: side(you) };
+    const yours = { sheet: this.innings.sheet, batting: scoresheetSide(you), bowling: scoresheetSide(them) };
+    const theirs = { sheet: sheetOf(this.theirInnings!), batting: scoresheetSide(them), bowling: scoresheetSide(you) };
     const [first, second] = this.youBatFirst ? [yours, theirs] : [theirs, yours];
     this.scoreboard.setVisible(false);
     showScoresheet({
@@ -505,7 +492,7 @@ export class MatchScene extends Phaser.Scene {
       opponent: them.code,
       runs: innings.runs,
       wickets: innings.wickets,
-      allOut: innings.score.indexOf("/") < 0,
+      allOut: innings.allOut,
       overs: innings.oversText,
       runRate: innings.runRate,
       phase: this.phase,

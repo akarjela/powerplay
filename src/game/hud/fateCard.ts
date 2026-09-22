@@ -1,5 +1,5 @@
 import type { Fate } from "../../sim/tournament";
-import { el, hex, hudRoot, ordinal, trophyMark } from "./dom";
+import { button, el, hex, hudRoot, ordinal, trophyMark } from "./dom";
 
 export interface FateSpec {
   fate: Fate;
@@ -52,23 +52,17 @@ export function showFate(spec: FateSpec): void {
   }
 
   const actions = el("div", "actions");
-  const close = el("button", "primary", fate.kind === "champion" ? "Take a bow" : "See the table");
-  close.type = "button";
-  close.addEventListener("click", (e) => {
+  actions.append(button("primary", fate.kind === "champion" ? "Take a bow" : "See the table", (e) => {
     e.stopPropagation();
     hideFate();
     spec.onClose();
-  });
-  actions.append(close);
+  }));
   if (spec.onNewSeason) {
-    const fresh = el("button", "ghost", "New season");
-    fresh.type = "button";
-    fresh.addEventListener("click", (e) => {
+    actions.append(button("ghost", "New season", (e) => {
       e.stopPropagation();
       hideFate();
       spec.onNewSeason?.();
-    });
-    actions.append(fresh);
+    }));
   }
   card.append(actions);
   scrim.append(card);

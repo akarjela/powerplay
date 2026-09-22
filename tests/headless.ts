@@ -9,7 +9,7 @@ import {
 import type { Stance } from "../src/game/config";
 import { batSpeedFactor, contactDamping, nextAngularVelocity, settlePivot, swingEffort, swingTarget } from "../src/game/physics/swing";
 import type { Point } from "../src/game/physics/swing";
-import { fieldFor, isRolling, judgeBall, metresDownfield, rollingVelocity, runOut } from "../src/game/physics/field";
+import { isRolling, judgeBall, metresDownfield, rollingVelocity, runOut } from "../src/game/physics/field";
 import type { Fielder } from "../src/game/physics/field";
 import { shotBearing } from "../src/game/physics/direction";
 import type { Delivery } from "../src/sim/delivery";
@@ -265,5 +265,3 @@ export function swing(stance: Stance, startMs: number, bladeDegrees: number): Pl
     pointer: (elapsed) => (elapsed < startMs ? REST : aim),
   };
 }
-
-export const phaseField = fieldFor;

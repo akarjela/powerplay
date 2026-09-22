@@ -157,11 +157,18 @@ export function resolveGroundedBall(
     return { runs: 4, description: `Four, through ${region}.` };
   }
 
-  const runs: Runs = restM >= 55 ? 3 : restM >= 28 ? 2 : restM >= 11 ? 1 : 0;
-  return {
-    runs,
-    description: runs === 0 ? "No run." : `${runs === 1 ? "One" : runs === 2 ? "Two" : "Three"}, into the gap at ${region}.`,
-  };
+  const runs = runsInTheGap(restM);
+  if (runs === 0) return { runs, description: "No run." };
+  return { runs, description: `${RUN_WORD[runs]}, into the gap at ${region}.` };
+}
+
+const RUN_WORD: Record<number, string> = { 1: "One", 2: "Two", 3: "Three" };
+
+function runsInTheGap(restM: number): Runs {
+  if (restM >= 55) return 3;
+  if (restM >= 28) return 2;
+  if (restM >= 11) return 1;
+  return 0;
 }
 
 export function caught(fielder: Fielder): Outcome {
@@ -186,13 +193,18 @@ export function runOutChance(runs: number): number {
 export function runOut(outcome: Outcome, roll: number): Outcome {
   if (outcome.wicket || outcome.extra === "wide" || outcome.extra === "no-ball") return outcome;
   if (roll >= runOutChance(outcome.runs)) return outcome;
-  const completed = (outcome.runs - 1) as Outcome["runs"];
   return {
     ...outcome,
-    runs: completed,
+    runs: (outcome.runs - 1) as Runs,
     wicket: "run-out",
-    description: `Run out! Sent back for the ${outcome.runs === 1 ? "single" : outcome.runs === 2 ? "second" : "third"} and never made it.`,
+    description: `Run out! Sent back for the ${runOutCall(outcome.runs)} and never made it.`,
   };
+}
+
+function runOutCall(runs: number): string {
+  if (runs === 1) return "single";
+  if (runs === 2) return "second";
+  return "third";
 }
 
 export interface BallState {

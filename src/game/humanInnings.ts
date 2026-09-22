@@ -1,6 +1,6 @@
 import { BALLS_PER_OVER, OVERS, WICKETS } from "../sim/innings";
 import type { BattingLine, BowlingLine, InningsSummary } from "../sim/innings";
-import { countsAsBall, runsAgainstBowler } from "../sim/types";
+import { countsAsBall, runsAgainstBowler, teamRuns } from "../sim/types";
 import type { Outcome } from "../sim/types";
 import type { Batter, Bowler, Squad } from "../sim/player";
 import { emptyExtras, sheetFrom, tallyExtra } from "../sim/scorecard";
@@ -53,7 +53,7 @@ export class HumanInnings {
       this.overNumber = this.balls / BALLS_PER_OVER + 1;
     }
 
-    const scored = outcome.runs + (outcome.extra === "wide" || outcome.extra === "no-ball" ? 1 : 0);
+    const scored = teamRuns(outcome);
     this.runs += scored;
     this.overRuns += scored;
     tallyExtra(this.extras, outcome);
@@ -136,8 +136,12 @@ export class HumanInnings {
     return this.balls === 0 ? 0 : (this.runs / this.balls) * BALLS_PER_OVER;
   }
 
+  get allOut(): boolean {
+    return this.wickets >= WICKETS;
+  }
+
   get score(): string {
-    return this.wickets >= WICKETS ? `${this.runs}` : `${this.runs}/${this.wickets}`;
+    return this.allOut ? `${this.runs}` : `${this.runs}/${this.wickets}`;
   }
 
   get thisOver(): readonly BallMark[] {
