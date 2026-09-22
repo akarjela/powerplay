@@ -80,20 +80,20 @@ describe("the human innings with a batting order and a target", () => {
 
   it("opens with the first two, rotates on odd runs, and swaps at the over", () => {
     const innings = new HumanInnings(squad);
-    expect(innings.atTheCrease.map((l) => l.batter.name)).toEqual(["Rohit Sharma", "Ryan Rickelton"]);
+    expect(innings.atTheCrease.map((l) => l.batter.name)).toEqual(["Rohit Shinde", "Ryan Roux"]);
     innings.record(one);
-    expect(innings.atTheCrease[0].batter.name).toBe("Ryan Rickelton");
+    expect(innings.atTheCrease[0].batter.name).toBe("Ryan Roux");
     innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot); innings.record(dot);
 
-    expect(innings.atTheCrease[0].batter.name).toBe("Rohit Sharma");
+    expect(innings.atTheCrease[0].batter.name).toBe("Rohit Shinde");
   });
 
   it("sends the next man in when one is out, and scores each line", () => {
     const innings = new HumanInnings(squad);
     innings.record(six);
     innings.record(out);
-    expect(innings.atTheCrease[0].batter.name).toBe("Will Jacks");
-    const rohit = innings.battingLines.find((l) => l.batter.name === "Rohit Sharma")!;
+    expect(innings.atTheCrease[0].batter.name).toBe("Will Jarvis");
+    const rohit = innings.battingLines.find((l) => l.batter.name === "Rohit Shinde")!;
     expect(rohit.runs).toBe(6);
     expect(rohit.balls).toBe(2);
     expect(rohit.sixes).toBe(1);

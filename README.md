@@ -130,6 +130,6 @@ close, and not identical), sound, touch input, deployment, season history.
 `HANDOFF.md` has the ordered list.
 
 Teams are fictional; the players are not. Each eleven is that franchise's
-IPL 2026 side under real names, and the auction adds sixteen retired legends.
-This is a private build: player likenesses are licensed, so rename them and
-clear the franchise names against a trademark register before any release.
+IPL 2026 side with real first names and changed surnames (Virat Kapadia, MS
+Deshmukh), and the auction adds sixteen retired legends under the same rule.
+Clear the franchise names against a trademark register before any release.

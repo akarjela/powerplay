@@ -77,10 +77,10 @@ describe("extras", () => {
 describe("how a batter was out", () => {
   it("reads like a scorecard", () => {
     expect(howOut({})).toBe("not out");
-    expect(howOut({ dismissal: "bowled", bowler: "Bumrah" })).toBe("b Bumrah");
-    expect(howOut({ dismissal: "caught", bowler: "Bumrah" })).toBe("ct b Bumrah");
-    expect(howOut({ dismissal: "lbw", bowler: "Bumrah" })).toBe("lbw b Bumrah");
-    expect(howOut({ dismissal: "stumped", bowler: "Bumrah" })).toBe("st b Bumrah");
+    expect(howOut({ dismissal: "bowled", bowler: "Bhatia" })).toBe("b Bhatia");
+    expect(howOut({ dismissal: "caught", bowler: "Bhatia" })).toBe("ct b Bhatia");
+    expect(howOut({ dismissal: "lbw", bowler: "Bhatia" })).toBe("lbw b Bhatia");
+    expect(howOut({ dismissal: "stumped", bowler: "Bhatia" })).toBe("st b Bhatia");
     expect(howOut({ dismissal: "run-out" })).toBe("run out");
   });
 });
